@@ -914,6 +914,66 @@ if (IS_CLI) {
     exit(1);
 }
 
+// =========================================================================
+// 4. ОБРАБОТКА СТАТИЧЕСКИХ ФАЙЛОВ
+// =========================================================================
+$staticDir = __DIR__ . '/public';
+$requestUri = parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH);
+
+// Если запрос начинается с /public/, отдаём статический файл
+if (str_starts_with($requestUri, '/public/')) {
+    $relativePath = substr($requestUri, strlen('/public/'));
+    
+    // Защита от выхода за пределы директории (path traversal)
+    if (strpos($relativePath, '..') !== false || strpos($relativePath, '/') !== false) {
+        http_response_code(403);
+        header('Content-Type: text/plain; charset=utf-8');
+        echo 'Доступ запрещён';
+        exit;
+    }
+    
+    $filePath = $staticDir . '/' . $relativePath;
+    
+    if (is_file($filePath)) {
+        // Определение MIME-типа по расширению
+        $extension = strtolower(pathinfo($filePath, PATHINFO_EXTENSION));
+        $mimeTypes = [
+            'js'   => 'application/javascript; charset=utf-8',
+            'css'  => 'text/css; charset=utf-8',
+            'png'  => 'image/png',
+            'jpg'  => 'image/jpeg',
+            'jpeg' => 'image/jpeg',
+            'gif'  => 'image/gif',
+            'svg'  => 'image/svg+xml',
+            'ico'  => 'image/x-icon',
+            'webp' => 'image/webp',
+            'woff' => 'font/woff',
+            'woff2'=> 'font/woff2',
+            'ttf'  => 'font/ttf',
+            'eot'  => 'application/vnd.ms-fontobject',
+            'txt'  => 'text/plain; charset=utf-8',
+            'html' => 'text/html; charset=utf-8',
+            'json' => 'application/json; charset=utf-8',
+        ];
+        
+        $mimeType = $mimeTypes[$extension] ?? 'application/octet-stream';
+        
+        // Заголовки для кеширования статики
+        header('Content-Type: ' . $mimeType);
+        header('Cache-Control: public, max-age=31536000, immutable');
+        header('Content-Length: ' . filesize($filePath));
+        
+        // Отдаём файл
+        readfile($filePath);
+        exit;
+    } else {
+        http_response_code(404);
+        header('Content-Type: text/plain; charset=utf-8');
+        echo 'Файл не найден';
+        exit;
+    }
+}
+
 // --- HTTP-роутинг ---
 $action = $_GET['action'] ?? 'catalog';
 
