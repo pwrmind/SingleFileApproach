@@ -5,7 +5,7 @@
 <?php else: ?>
     <?php foreach ($apps as $app): ?>
         <div class="card">
-            <h3><?= htmlspecialchars($app['title'] ?? '', ENT_QUOTES) ?></h3>
+            <h3><a href="?action=app_details&app_id=<?= htmlspecialchars($app['id'] ?? '', ENT_QUOTES) ?>"><?= htmlspecialchars($app['title'] ?? '', ENT_QUOTES) ?></a></h3>
             <p>Скачиваний: <b><?= (int)($app['downloads'] ?? 0) ?></b></p>
         </div>
     <?php endforeach; ?>
