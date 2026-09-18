@@ -24,7 +24,7 @@ if (!IS_CLI && session_status() === PHP_SESSION_NONE) {
 // 0. PREFLIGHT: все шаблоны на месте?
 // =========================================================================
 (static function (): void {
-    $required = ['_layout', 'catalog', 'login', 'publish', 'error', 'app_details', 'app_edit', 'profile', 'search', 'categories'];
+    $required = ['_layout', 'catalog', 'login', 'publish', 'error', 'app_details', 'app_edit', 'profile', 'search', 'categories', 'category_detail'];
     $missing  = [];
     foreach ($required as $name) {
         $path = __DIR__ . '/views/' . $name . '.phtml';
@@ -315,33 +315,6 @@ $features = [
         public function domain(Db $db, array $request): DomainResult
         {
             $apps = $db->apps;
-
-            // Фильтрация по категории, если передан параметр category (slug)
-            $categorySlug = $request['GET']['category'] ?? null;
-            if ($categorySlug !== null && $categorySlug !== '') {
-                // Находим ID категории по slug
-                $categoryId = null;
-                foreach ($db->categories as $cat) {
-                    if (($cat['slug'] ?? '') === $categorySlug) {
-                        $categoryId = $cat['id'];
-                        break;
-                    }
-                }
-
-                if ($categoryId !== null) {
-                    // Фильтруем приложения по category_id
-                    $filteredApps = [];
-                    foreach ($apps as $app) {
-                        if (($app['category_id'] ?? '') === $categoryId) {
-                            $filteredApps[$app['id']] = $app;
-                        }
-                    }
-                    $apps = $filteredApps;
-                } else {
-                    // Категория с таким slug не найдена — возвращаем пустой список
-                    $apps = [];
-                }
-            }
 
             return DomainResult::success($apps);
         }
@@ -1406,6 +1379,93 @@ $features = [
             }
 
             echo "[PASS] categories\n";
+        }
+    },
+
+    // --- CATEGORY_DETAIL: детальная информация по категории -----------------
+    'category_detail' => new class extends BaseAdrSlice {
+        public function domain(Db $db, array $request): DomainResult
+        {
+            $categorySlug = $request['GET']['slug'] ?? null;
+            
+            if ($categorySlug === null || $categorySlug === '') {
+                return DomainResult::failure('Не указан slug категории.');
+            }
+
+            // Находим категорию по slug
+            $category = null;
+            foreach ($db->categories as $cat) {
+                if (($cat['slug'] ?? '') === $categorySlug) {
+                    $category = $cat;
+                    break;
+                }
+            }
+
+            if ($category === null) {
+                return DomainResult::failure('Категория не найдена.');
+            }
+
+            // Фильтруем приложения по category_id
+            $apps = [];
+            foreach ($db->apps as $app) {
+                if (($app['category_id'] ?? '') === $category['id']) {
+                    $apps[$app['id']] = $app;
+                }
+            }
+
+            return DomainResult::success(['category' => $category, 'apps' => $apps]);
+        }
+
+        public function response(DomainResult $result, array $request): string
+        {
+            if ($result->isFailure()) {
+                if (self::wantsJson($request)) {
+                    return Json::error($result->getError(), 404);
+                }
+                return Layout::error(404, 'Категория не найдена', $result->getError());
+            }
+
+            $data = $result->getData();
+            $category = $data['category'];
+            $apps = $data['apps'];
+
+            if (self::wantsJson($request)) {
+                return Json::render(['category' => $category, 'apps' => array_values($apps)]);
+            }
+
+            $content = Engine::view('category_detail', ['category' => $category, 'apps' => $apps]);
+            return Layout::render($category['name'] ?? 'Категория', $content);
+        }
+
+        public function runTests(Db $db): void
+        {
+            $testDb = clone $db;
+            $testDb->apps['t-1'] = ['id' => 't-1', 'dev_id' => 'x', 'title' => 'Test App', 'downloads' => 10, 'category_id' => 'cat-1'];
+
+            // Тест: категория существует
+            $res = $this->domain($testDb, ['METHOD' => 'GET', 'GET' => ['slug' => 'messengers']]);
+            if ($res->isFailure()) {
+                throw new RuntimeException('Category detail domain test failed: category not found.');
+            }
+            $data = $res->getData();
+            if (!isset($data['category']) || !isset($data['apps'])) {
+                throw new RuntimeException('Category detail domain test failed: missing data.');
+            }
+
+            // Тест: JSON ответ
+            $json = $this->response($res, ['GET' => ['format' => 'json', 'slug' => 'messengers'], 'METHOD' => 'GET']);
+            $decoded = json_decode($json, true);
+            if (!is_array($decoded) || !isset($decoded['category']) || !isset($decoded['apps'])) {
+                throw new RuntimeException('Category detail JSON response is not valid.');
+            }
+
+            // Тест: HTML ответ
+            $html = $this->response($res, ['GET' => ['slug' => 'messengers'], 'METHOD' => 'GET']);
+            if (strpos($html, 'Мессенджеры') === false) {
+                throw new RuntimeException('Category detail HTML response missing category name.');
+            }
+
+            echo "[PASS] category_detail\n";
         }
     },
 ];
