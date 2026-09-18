@@ -24,7 +24,7 @@ if (!IS_CLI && session_status() === PHP_SESSION_NONE) {
 // 0. PREFLIGHT: все шаблоны на месте?
 // =========================================================================
 (static function (): void {
-    $required = ['_layout', 'catalog', 'login', 'publish', 'error', 'app_details', 'app_edit', 'profile', 'search'];
+    $required = ['_layout', 'catalog', 'login', 'publish', 'error', 'app_details', 'app_edit', 'profile', 'search', 'categories'];
     $missing  = [];
     foreach ($required as $name) {
         $path = __DIR__ . '/views/' . $name . '.phtml';
@@ -50,7 +50,13 @@ if (!IS_CLI && session_status() === PHP_SESSION_NONE) {
 class Db
 {
     public array $apps = [
-        'app-1' => ['id' => 'app-1', 'dev_id' => 'dev_123', 'title' => 'Telegram Dev', 'downloads' => 150],
+        'app-1' => ['id' => 'app-1', 'dev_id' => 'dev_123', 'title' => 'Telegram Dev', 'downloads' => 150, 'category_id' => 'cat-1'],
+    ];
+
+    public array $categories = [
+        'cat-1' => ['id' => 'cat-1', 'name' => 'Мессенджеры', 'slug' => 'messengers'],
+        'cat-2' => ['id' => 'cat-2', 'name' => 'Игры', 'slug' => 'games'],
+        'cat-3' => ['id' => 'cat-3', 'name' => 'Продуктивность', 'slug' => 'productivity'],
     ];
 
     public array $users = [];
@@ -441,10 +447,11 @@ $features = [
 
             $newId = 'app-' . (count($db->apps) + 1);
             $db->apps[$newId] = [
-                'id'        => $newId,
-                'dev_id'    => Auth::user()['id'],
-                'title'     => $title,
-                'downloads' => 0,
+                'id'          => $newId,
+                'dev_id'      => Auth::user()['id'],
+                'title'       => $title,
+                'downloads'   => 0,
+                'category_id' => $request['POST']['category_id'] ?? null,
             ];
 
             return DomainResult::success(['status' => 'created', 'id' => $newId]);
@@ -452,6 +459,7 @@ $features = [
 
         public function response(DomainResult $result, array $request): string
         {
+            global $db;
             $json = self::wantsJson($request);
 
             if ($json) {
@@ -473,6 +481,7 @@ $features = [
             $content = Engine::view('publish', [
                 'error' => $result->isFailure() ? $result->getError() : null,
                 'csrf'  => Csrf::token(),
+                'categories' => $db->categories,
             ]);
             return Layout::render('Публикация', $content);
         }
@@ -786,7 +795,13 @@ $features = [
                 $canEdit = true;
             }
 
-            return DomainResult::success(['app' => $app, 'canEdit' => $canEdit]);
+            // Добавляем информацию о категории
+            $category = null;
+            if (isset($app['category_id']) && isset($db->categories[$app['category_id']])) {
+                $category = $db->categories[$app['category_id']];
+            }
+
+            return DomainResult::success(['app' => $app, 'canEdit' => $canEdit, 'category' => $category]);
         }
 
         public function response(DomainResult $result, array $request): string
@@ -799,7 +814,7 @@ $features = [
                 }
                 $data = $result->getData();
                 $app = $data['app'] ?? $data;
-                return Json::render(['app' => $app]);
+                return Json::render(['app' => $app, 'category' => $data['category'] ?? null]);
             }
 
             if ($result->isFailure()) {
@@ -809,8 +824,9 @@ $features = [
             $data = $result->getData();
             $app = $data['app'] ?? $data;
             $canEdit = $data['canEdit'] ?? false;
+            $category = $data['category'] ?? null;
             
-            $content = Engine::view('app_details', ['app' => $app, 'canEdit' => $canEdit]);
+            $content = Engine::view('app_details', ['app' => $app, 'canEdit' => $canEdit, 'category' => $category]);
             return Layout::render(htmlspecialchars($app['title'] ?? 'Приложение', ENT_QUOTES), $content);
         }
 
@@ -911,6 +927,7 @@ $features = [
 
             // Обновляем данные приложения
             $db->apps[$appId]['title'] = $title;
+            $db->apps[$appId]['category_id'] = $request['POST']['category_id'] ?? null;
 
             return DomainResult::success(['app' => $db->apps[$appId], 'updated' => true]);
         }
@@ -935,11 +952,19 @@ $features = [
             $error = $result->getError() ?: null;
             $success = $data['updated'] ?? false;
 
+            // Получаем информацию о категории, если она указана
+            $category = null;
+            if ($app && isset($app['category_id']) && isset($db->categories[$app['category_id']])) {
+                $category = $db->categories[$app['category_id']];
+            }
+
             $content = Engine::view('app_edit', [
                 'app' => $app,
                 'error' => $error,
                 'success' => $success,
                 'csrf' => Csrf::token(),
+                'category' => $category,
+                'categories' => $db->categories,
             ]);
 
             return Layout::render('Редактирование приложения', $content);
@@ -947,7 +972,7 @@ $features = [
 
         public function runTests(Db $db): void
         {
-            Auth::setMockSession(['id' => 'dev_123', 'name' => 'Test User']);
+            Auth::setMockSession(['user' => ['id' => 'dev_123', 'name' => 'Test User']]);
             Csrf::setMockToken('test');
 
             try {
@@ -965,7 +990,7 @@ $features = [
                 if ($noAuth->isSuccess()) {
                     throw new RuntimeException('AppEdit: unauthorized access should fail.');
                 }
-                Auth::setMockSession(['id' => 'dev_123', 'name' => 'Test User']);
+                Auth::setMockSession(['user' => ['id' => 'dev_123', 'name' => 'Test User']]);
 
                 // Тест: отсутствие app_id
                 $noId = $this->domain($testDb, ['METHOD' => 'GET', 'GET' => []]);
@@ -1298,6 +1323,60 @@ $features = [
             }
 
             echo "[PASS] search\n";
+        }
+    },
+
+    // --- CATEGORIES: read-only, HTML + JSON --------------------------------
+    'categories' => new class extends BaseAdrSlice {
+        public function domain(Db $db, array $request): DomainResult
+        {
+            return DomainResult::success($db->categories);
+        }
+
+        public function response(DomainResult $result, array $request): string
+        {
+            $categories = $result->getData();
+
+            if (self::wantsJson($request)) {
+                if ($result->isFailure()) {
+                    return Json::error($result->getError(), 400);
+                }
+                return Json::render(['categories' => array_values($categories)]);
+            }
+
+            $content = Engine::view('categories', ['categories' => $categories]);
+            return Layout::render('Категории', $content);
+        }
+
+        public function runTests(Db $db): void
+        {
+            $testDb = clone $db;
+            $testDb->categories['cat-test'] = ['id' => 'cat-test', 'name' => 'Тестовая', 'slug' => 'test'];
+
+            $res = $this->domain($testDb, ['METHOD' => 'GET']);
+            if ($res->isFailure() || !isset($res->getData()['cat-test'])) {
+                throw new RuntimeException('Categories domain test failed.');
+            }
+
+            $json = $this->response($res, ['GET' => ['format' => 'json'], 'METHOD' => 'GET']);
+            $decoded = json_decode($json, true);
+            if (!is_array($decoded) || !isset($decoded['categories'])) {
+                throw new RuntimeException('Categories JSON response is not valid.');
+            }
+            $ids = array_column($decoded['categories'], 'id');
+            if (!in_array('cat-test', $ids, true)) {
+                throw new RuntimeException('Categories JSON missing expected category.');
+            }
+
+            $html = $this->response($res, ['METHOD' => 'GET']);
+            if (strpos($html, 'Категории') === false) {
+                throw new RuntimeException('Categories HTML response missing title.');
+            }
+            if (strpos($html, 'Тестовая') === false) {
+                throw new RuntimeException('Categories HTML response missing category name.');
+            }
+
+            echo "[PASS] categories\n";
         }
     },
 ];
