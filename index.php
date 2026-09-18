@@ -24,7 +24,7 @@ if (!IS_CLI && session_status() === PHP_SESSION_NONE) {
 // 0. PREFLIGHT: все шаблоны на месте?
 // =========================================================================
 (static function (): void {
-    $required = ['_layout', 'catalog', 'login', 'publish', 'error', 'app_details', 'profile', 'search'];
+    $required = ['_layout', 'catalog', 'login', 'publish', 'error', 'app_details', 'app_edit', 'profile', 'search'];
     $missing  = [];
     foreach ($required as $name) {
         $path = __DIR__ . '/views/' . $name . '.phtml';
@@ -777,7 +777,16 @@ $features = [
                 return DomainResult::failure('Приложение не найдено.');
             }
 
-            return DomainResult::success($db->apps[$appId]);
+            $app = $db->apps[$appId];
+            $currentUser = Auth::user();
+            
+            // Проверяем, может ли текущий пользователь редактировать это приложение
+            $canEdit = false;
+            if ($currentUser !== null && $app['dev_id'] === $currentUser['id']) {
+                $canEdit = true;
+            }
+
+            return DomainResult::success(['app' => $app, 'canEdit' => $canEdit]);
         }
 
         public function response(DomainResult $result, array $request): string
@@ -788,15 +797,20 @@ $features = [
                 if ($result->isFailure()) {
                     return Json::error($result->getError(), 404);
                 }
-                return Json::render(['app' => $result->getData()]);
+                $data = $result->getData();
+                $app = $data['app'] ?? $data;
+                return Json::render(['app' => $app]);
             }
 
             if ($result->isFailure()) {
                 return Layout::error(404, 'Приложение не найдено', $result->getError());
             }
 
-            $app = $result->getData();
-            $content = Engine::view('app_details', ['app' => $app]);
+            $data = $result->getData();
+            $app = $data['app'] ?? $data;
+            $canEdit = $data['canEdit'] ?? false;
+            
+            $content = Engine::view('app_details', ['app' => $app, 'canEdit' => $canEdit]);
             return Layout::render(htmlspecialchars($app['title'] ?? 'Приложение', ENT_QUOTES), $content);
         }
 
@@ -828,7 +842,7 @@ $features = [
                 throw new RuntimeException('AppDetails: valid app_id failed: ' . $ok->getError());
             }
             $data = $ok->getData();
-            if (($data['id'] ?? null) !== 't-details' || ($data['title'] ?? null) !== 'Test Details App') {
+            if (($data['app']['id'] ?? null) !== 't-details' || ($data['app']['title'] ?? null) !== 'Test Details App') {
                 throw new RuntimeException('AppDetails: returned data mismatch.');
             }
 
@@ -856,6 +870,159 @@ $features = [
             }
 
             echo "[PASS] app_details\n";
+        }
+    },
+
+    // --- APP_EDIT: редактирование приложения (HTML only) ---------------------
+    'app_edit' => new class extends BaseAdrSlice {
+        public function domain(Db $db, array $request): DomainResult
+        {
+            if (!Auth::check()) {
+                return DomainResult::failure('Требуется авторизация.');
+            }
+
+            $appId = trim((string)($request['GET']['app_id'] ?? $request['POST']['app_id'] ?? ''));
+            if ($appId === '') {
+                return DomainResult::failure('Не указан ID приложения.');
+            }
+
+            if (!isset($db->apps[$appId])) {
+                return DomainResult::failure('Приложение не найдено.');
+            }
+
+            $app = $db->apps[$appId];
+            $currentUser = Auth::user();
+
+            // Проверка прав: только разработчик может редактировать своё приложение
+            if ($app['dev_id'] !== $currentUser['id']) {
+                return DomainResult::failure('У вас нет прав на редактирование этого приложения.');
+            }
+
+            // GET запрос - показываем форму
+            if (($request['METHOD'] ?? 'GET') !== 'POST') {
+                return DomainResult::success(['app' => $app, 'show_form' => true]);
+            }
+
+            // POST запрос - обрабатываем сохранение
+            $title = trim((string)($request['POST']['title'] ?? ''));
+            if (mb_strlen($title) < 3) {
+                return DomainResult::failure('Название приложения должно содержать минимум 3 символа.');
+            }
+
+            // Обновляем данные приложения
+            $db->apps[$appId]['title'] = $title;
+
+            return DomainResult::success(['app' => $db->apps[$appId], 'updated' => true]);
+        }
+
+        public function response(DomainResult $result, array $request): string
+        {
+            $json = self::wantsJson($request);
+
+            if ($json) {
+                if ($result->isFailure()) {
+                    return Json::error($result->getError(), 400);
+                }
+                return Json::render($result->getData());
+            }
+
+            if ($result->isFailure()) {
+                return Layout::error(400, 'Ошибка', $result->getError());
+            }
+
+            $data = $result->getData();
+            $app = $data['app'] ?? null;
+            $error = $result->getError() ?: null;
+            $success = $data['updated'] ?? false;
+
+            $content = Engine::view('app_edit', [
+                'app' => $app,
+                'error' => $error,
+                'success' => $success,
+                'csrf' => Csrf::token(),
+            ]);
+
+            return Layout::render('Редактирование приложения', $content);
+        }
+
+        public function runTests(Db $db): void
+        {
+            Auth::setMockSession(['id' => 'dev_123', 'name' => 'Test User']);
+            Csrf::setMockToken('test');
+
+            try {
+                $testDb = clone $db;
+                $testDb->apps['t-edit'] = [
+                    'id' => 't-edit',
+                    'dev_id' => 'dev_123',
+                    'title' => 'Original Title',
+                    'downloads' => 10,
+                ];
+
+                // Тест: отсутствие авторизации
+                Auth::setMockSession(null);
+                $noAuth = $this->domain($testDb, ['METHOD' => 'GET', 'GET' => ['app_id' => 't-edit']]);
+                if ($noAuth->isSuccess()) {
+                    throw new RuntimeException('AppEdit: unauthorized access should fail.');
+                }
+                Auth::setMockSession(['id' => 'dev_123', 'name' => 'Test User']);
+
+                // Тест: отсутствие app_id
+                $noId = $this->domain($testDb, ['METHOD' => 'GET', 'GET' => []]);
+                if ($noId->isSuccess()) {
+                    throw new RuntimeException('AppEdit: missing app_id should fail.');
+                }
+
+                // Тест: несуществующее приложение
+                $notFound = $this->domain($testDb, ['METHOD' => 'GET', 'GET' => ['app_id' => 'nonexistent']]);
+                if ($notFound->isSuccess()) {
+                    throw new RuntimeException('AppEdit: nonexistent app should fail.');
+                }
+
+                // Тест: GET запрос должен вернуть форму
+                $ok = $this->domain($testDb, ['METHOD' => 'GET', 'GET' => ['app_id' => 't-edit']]);
+                if ($ok->isFailure()) {
+                    throw new RuntimeException('AppEdit: valid request failed: ' . $ok->getError());
+                }
+                $data = $ok->getData();
+                if (!isset($data['app']) || !isset($data['show_form'])) {
+                    throw new RuntimeException('AppEdit: should return app and show_form.');
+                }
+
+                // Тест: POST с валидными данными
+                $postOk = $this->domain($testDb, [
+                    'METHOD' => 'POST',
+                    'GET' => ['app_id' => 't-edit'],
+                    'POST' => ['app_id' => 't-edit', 'title' => 'Updated Title', 'csrf_token' => 'test'],
+                ]);
+                if ($postOk->isFailure()) {
+                    throw new RuntimeException('AppEdit: valid POST failed: ' . $postOk->getError());
+                }
+                if (($testDb->apps['t-edit']['title'] ?? '') !== 'Updated Title') {
+                    throw new RuntimeException('AppEdit: title was not updated.');
+                }
+
+                // Тест: POST с коротким названием
+                $shortTitle = $this->domain($testDb, [
+                    'METHOD' => 'POST',
+                    'GET' => ['app_id' => 't-edit'],
+                    'POST' => ['app_id' => 't-edit', 'title' => 'AB', 'csrf_token' => 'test'],
+                ]);
+                if ($shortTitle->isSuccess()) {
+                    throw new RuntimeException('AppEdit: short title should fail.');
+                }
+
+                // Тест: HTML response
+                $html = $this->response($ok, ['METHOD' => 'GET', 'GET' => ['app_id' => 't-edit']]);
+                if (strpos($html, 'Original Title') === false) {
+                    throw new RuntimeException('AppEdit: HTML response missing app title.');
+                }
+
+                echo "[PASS] app_edit\n";
+            } finally {
+                Auth::setMockSession(null);
+                Csrf::setMockToken(null);
+            }
         }
     },
 
