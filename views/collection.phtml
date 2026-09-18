@@ -1,0 +1,29 @@
+<?php
+/** @var array $collection */
+/** @var array $apps */
+?>
+
+<h1><?= htmlspecialchars($collection['name'] ?? 'Коллекция', ENT_QUOTES) ?></h1>
+
+<?php if (!empty($collection['description'])): ?>
+    <p><?= htmlspecialchars($collection['description'] ?? '', ENT_QUOTES) ?></p>
+<?php endif; ?>
+
+<?php if (Auth::check()): ?>
+    <p><a href="?action=collection_edit&collection_id=<?= htmlspecialchars($collection['id'] ?? '', ENT_QUOTES) ?>">✏️ Редактировать коллекцию</a></p>
+<?php endif; ?>
+
+<?php if (empty($apps)): ?>
+    <p>В этой коллекции пока нет приложений.</p>
+<?php else: ?>
+    <ul class="app-list">
+        <?php foreach ($apps as $app): ?>
+            <li class="card">
+                <h3><a href="?action=app_details&app_id=<?= htmlspecialchars($app['id'] ?? '', ENT_QUOTES) ?>"><?= htmlspecialchars($app['title'] ?? '', ENT_QUOTES) ?></a></h3>
+                <p>Скачиваний: <b><?= (int)($app['downloads'] ?? 0) ?></b></p>
+            </li>
+        <?php endforeach; ?>
+    </ul>
+<?php endif; ?>
+
+<p><a href="?action=collections">← Вернуться к списку коллекций</a></p>

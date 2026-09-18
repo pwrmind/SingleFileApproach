@@ -2,14 +2,18 @@
 # Compiled and build artifacts
 *.pyc
 __pycache__/
+*.o
+*.obj
 
 # Dependencies
-vendor/
+.venv/
+venv/
 node_modules/
 
 # Logs and temp files
 *.log
 *.tmp
+*.swp
 
 # Environment
 .env
@@ -20,12 +24,26 @@ node_modules/
 .vscode/
 .idea/
 
-# OS generated files
-.DS_Store
-Thumbs.db
-
-# Build outputs
+# Build directories
 dist/
 build/
 target/
+
+# Python specific
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+.Python
+*.pot
+*.po
+*~
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# System files
+.DS_Store
+Thumbs.db
 ```
