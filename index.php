@@ -24,7 +24,7 @@ if (!IS_CLI && session_status() === PHP_SESSION_NONE) {
 // 0. PREFLIGHT: все шаблоны на месте?
 // =========================================================================
 (static function (): void {
-    $required = ['_layout', 'catalog', 'login', 'publish', 'error', 'app_details', 'profile'];
+    $required = ['_layout', 'catalog', 'login', 'publish', 'error', 'app_details', 'profile', 'search'];
     $missing  = [];
     foreach ($required as $name) {
         $path = __DIR__ . '/views/' . $name . '.phtml';
@@ -976,6 +976,161 @@ $features = [
                 Auth::setMockSession(null);
             }
             echo "[PASS] profile\n";
+        }
+    },
+
+    // --- SEARCH: поиск приложений по названию (read-only, HTML + JSON) ------
+    'search' => new class extends BaseAdrSlice {
+        public function domain(Db $db, array $request): DomainResult
+        {
+            $query = trim((string)($request['GET']['q'] ?? ''));
+            
+            // Если запрос пустой, возвращаем пустой результат
+            if ($query === '') {
+                return DomainResult::success(['apps' => [], 'query' => '']);
+            }
+
+            // Фильтрация приложений по названию (case-insensitive поиск)
+            $matchingApps = [];
+            foreach ($db->apps as $app) {
+                if (mb_stripos($app['title'], $query) !== false) {
+                    $matchingApps[] = $app;
+                }
+            }
+
+            return DomainResult::success([
+                'apps' => $matchingApps,
+                'query' => $query,
+            ]);
+        }
+
+        public function response(DomainResult $result, array $request): string
+        {
+            $json = self::wantsJson($request);
+            $data = $result->getData();
+            $query = $data['query'] ?? '';
+            $apps = $data['apps'] ?? [];
+
+            if ($json) {
+                if ($result->isFailure()) {
+                    return Json::error($result->getError(), 400);
+                }
+                return Json::render([
+                    'apps' => array_values($apps),
+                    'query' => $query,
+                    'count' => count($apps),
+                ]);
+            }
+
+            $content = Engine::view('search', [
+                'apps' => $apps,
+                'query' => $query,
+            ]);
+            return Layout::render('Поиск приложений', $content);
+        }
+
+        public function runTests(Db $db): void
+        {
+            $testDb = clone $db;
+            $testDb->apps['search-test-1'] = [
+                'id' => 'search-test-1',
+                'dev_id' => 'dev_123',
+                'title' => 'Telegram Messenger',
+                'downloads' => 500,
+            ];
+            $testDb->apps['search-test-2'] = [
+                'id' => 'search-test-2',
+                'dev_id' => 'dev_123',
+                'title' => 'Photo Editor Pro',
+                'downloads' => 200,
+            ];
+            $testDb->apps['search-test-3'] = [
+                'id' => 'search-test-3',
+                'dev_id' => 'dev_123',
+                'title' => 'Game of Thrones',
+                'downloads' => 1000,
+            ];
+
+            // domain() с пустым запросом должен вернуть пустой список
+            $emptyQuery = $this->domain($testDb, ['METHOD' => 'GET', 'GET' => ['q' => '']]);
+            if ($emptyQuery->isFailure()) {
+                throw new RuntimeException('Search: empty query should not fail.');
+            }
+            if (count($emptyQuery->getData()['apps']) !== 0) {
+                throw new RuntimeException('Search: empty query should return empty apps list.');
+            }
+
+            // domain() с запросом "telegram" должен найти приложения
+            $telegramResult = $this->domain($testDb, ['METHOD' => 'GET', 'GET' => ['q' => 'telegram']]);
+            if ($telegramResult->isFailure()) {
+                throw new RuntimeException('Search: valid query failed: ' . $telegramResult->getError());
+            }
+            $telegramApps = $telegramResult->getData()['apps'];
+            // Ожидаем как минимум search-test-1 (также может быть app-1 "Telegram Dev")
+            $found = false;
+            foreach ($telegramApps as $app) {
+                if ($app['id'] === 'search-test-1') {
+                    $found = true;
+                    break;
+                }
+            }
+            if (!$found) {
+                throw new RuntimeException('Search: telegram query did not find expected app.');
+            }
+
+            // domain() с запросом "game" должен найти одно приложение
+            $gameResult = $this->domain($testDb, ['METHOD' => 'GET', 'GET' => ['q' => 'game']]);
+            if ($gameResult->isFailure()) {
+                throw new RuntimeException('Search: game query failed.');
+            }
+            $gameApps = $gameResult->getData()['apps'];
+            if (count($gameApps) !== 1 || $gameApps[0]['id'] !== 'search-test-3') {
+                throw new RuntimeException('Search: game query did not find expected app.');
+            }
+
+            // domain() с запросом "notfound" должен вернуть пустой список
+            $notFoundResult = $this->domain($testDb, ['METHOD' => 'GET', 'GET' => ['q' => 'notfound']]);
+            if ($notFoundResult->isFailure()) {
+                throw new RuntimeException('Search: notfound query should not fail.');
+            }
+            if (count($notFoundResult->getData()['apps']) !== 0) {
+                throw new RuntimeException('Search: notfound query should return empty list.');
+            }
+
+            // HTML response
+            $html = $this->response($telegramResult, ['METHOD' => 'GET', 'GET' => ['q' => 'telegram']]);
+            if (strpos($html, 'Поиск приложений') === false) {
+                throw new RuntimeException('Search: HTML response missing title.');
+            }
+            if (strpos($html, 'Telegram Messenger') === false) {
+                throw new RuntimeException('Search: HTML response missing found app.');
+            }
+
+            // JSON response
+            $json = $this->response($telegramResult, ['METHOD' => 'GET', 'GET' => ['q' => 'telegram', 'format' => 'json']]);
+            $decoded = json_decode($json, true);
+            if (!is_array($decoded) || !isset($decoded['apps']) || !isset($decoded['query']) || !isset($decoded['count'])) {
+                throw new RuntimeException('Search: JSON response missing required keys.');
+            }
+            if ($decoded['query'] !== 'telegram') {
+                throw new RuntimeException('Search: JSON response has wrong query.');
+            }
+            // Проверяем что найдено хотя бы одно приложение и search-test-1 среди них
+            if ($decoded['count'] < 1) {
+                throw new RuntimeException('Search: JSON response count should be >= 1.');
+            }
+            $foundInJson = false;
+            foreach ($decoded['apps'] as $app) {
+                if ($app['id'] === 'search-test-1') {
+                    $foundInJson = true;
+                    break;
+                }
+            }
+            if (!$foundInJson) {
+                throw new RuntimeException('Search: JSON response has wrong apps.');
+            }
+
+            echo "[PASS] search\n";
         }
     },
 ];
