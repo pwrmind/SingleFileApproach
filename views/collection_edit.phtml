@@ -1,0 +1,50 @@
+<?php
+/** @var array $collection */
+/** @var array $apps */
+/** @var array $collectionAppIds */
+/** @var string $csrf */
+?>
+
+<h1>✏️ Редактирование коллекции</h1>
+
+<form method="POST" action="?action=collection_edit&collection_id=<?= htmlspecialchars($collection['id'] ?? '', ENT_QUOTES) ?>">
+    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf, ENT_QUOTES) ?>">
+    
+    <div class="form-group">
+        <label for="name">Название:</label><br>
+        <input type="text" id="name" name="name" 
+               value="<?= htmlspecialchars($collection['name'] ?? '', ENT_QUOTES) ?>" 
+               required style="width: 100%; max-width: 400px;">
+    </div>
+    
+    <div class="form-group">
+        <label for="description">Описание:</label><br>
+        <textarea id="description" name="description" rows="4" style="width: 100%; max-width: 400px;"><?= htmlspecialchars($collection['description'] ?? '', ENT_QUOTES) ?></textarea>
+    </div>
+    
+    <div class="form-group">
+        <label>Приложения в коллекции:</label><br>
+        <p><small>Отметьте приложения, которые должны входить в эту коллекцию</small></p>
+        <?php if (empty($apps)): ?>
+            <p>Нет доступных приложений.</p>
+        <?php else: ?>
+            <ul style="list-style: none; padding: 0;">
+                <?php foreach ($apps as $app): ?>
+                    <li style="margin: 8px 0;">
+                        <label>
+                            <input type="checkbox" name="app_ids[]" value="<?= htmlspecialchars($app['id'] ?? '', ENT_QUOTES) ?>"
+                                   <?= in_array($app['id'], $collectionAppIds, true) ? 'checked' : '' ?>>
+                            <?= htmlspecialchars($app['title'] ?? '', ENT_QUOTES) ?>
+                            <small style="color: #666;">(Скачиваний: <?= (int)($app['downloads'] ?? 0) ?>)</small>
+                        </label>
+                    </li>
+                <?php endforeach; ?>
+            </ul>
+        <?php endif; ?>
+    </div>
+    
+    <div class="form-group">
+        <button type="submit">Сохранить изменения</button>
+        <a href="?action=collection&collection_id=<?= htmlspecialchars($collection['id'] ?? '', ENT_QUOTES) ?>" style="margin-left: 10px;">Отмена</a>
+    </div>
+</form>

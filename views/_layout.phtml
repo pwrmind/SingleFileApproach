@@ -11,6 +11,7 @@
         <?php if ($user ?? null): ?>
             <a href="?action=catalog">🏪 Каталог</a> |
             <a href="?action=categories">📚 Категории</a> |
+            <a href="?action=collections">📦 Коллекции</a> |
             <a href="?action=search">🔍 Поиск</a> |
             <a href="?action=publish">🚀 Публикация</a> |
             <a href="?action=profile">👤 <?= htmlspecialchars($user['name'] ?? '', ENT_QUOTES) ?></a> |
@@ -21,6 +22,7 @@
         <?php else: ?>
             <a href="?action=catalog">🏪 Каталог</a> |
             <a href="?action=categories">📚 Категории</a> |
+            <a href="?action=collections">📦 Коллекции</a> |
             <a href="?action=search">🔍 Поиск</a> |
             <a href="?action=login">🔑 Вход для авторов</a>
         <?php endif; ?>

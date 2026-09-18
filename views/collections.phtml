@@ -1,0 +1,18 @@
+<h1>📦 Коллекции приложений</h1>
+
+<?php if (empty($collections)): ?>
+    <p>Пока нет ни одной коллекции.</p>
+<?php else: ?>
+    <ul class="category-list">
+        <?php foreach ($collections as $collection): ?>
+            <li class="card">
+                <a href="?action=collection&collection_id=<?= htmlspecialchars($collection['id'] ?? '', ENT_QUOTES) ?>">
+                    <?= htmlspecialchars($collection['name'] ?? '', ENT_QUOTES) ?>
+                </a>
+                <?php if (!empty($collection['description'])): ?>
+                    <p><?= htmlspecialchars($collection['description'] ?? '', ENT_QUOTES) ?></p>
+                <?php endif; ?>
+            </li>
+        <?php endforeach; ?>
+    </ul>
+<?php endif; ?>

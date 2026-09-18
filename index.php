@@ -24,7 +24,7 @@ if (!IS_CLI && session_status() === PHP_SESSION_NONE) {
 // 0. PREFLIGHT: все шаблоны на месте?
 // =========================================================================
 (static function (): void {
-    $required = ['_layout', 'catalog', 'login', 'publish', 'error', 'app_details', 'app_edit', 'profile', 'search', 'categories', 'category_detail'];
+    $required = ['_layout', 'catalog', 'login', 'publish', 'error', 'app_details', 'app_edit', 'profile', 'search', 'categories', 'category_detail', 'collections', 'collection', 'collection_edit'];
     $missing  = [];
     foreach ($required as $name) {
         $path = __DIR__ . '/views/' . $name . '.phtml';
@@ -57,6 +57,20 @@ class Db
         'cat-1' => ['id' => 'cat-1', 'name' => 'Мессенджеры', 'slug' => 'messengers'],
         'cat-2' => ['id' => 'cat-2', 'name' => 'Игры', 'slug' => 'games'],
         'cat-3' => ['id' => 'cat-3', 'name' => 'Продуктивность', 'slug' => 'productivity'],
+    ];
+
+    public array $collections = [
+        'col-1' => ['id' => 'col-1', 'name' => 'Популярные приложения', 'description' => 'Самые скачиваемые приложения недели'],
+        'col-2' => ['id' => 'col-2', 'name' => 'Новинки', 'description' => 'Недавно добавленные приложения'],
+        'col-3' => ['id' => 'col-3', 'name' => 'Для работы', 'description' => 'Приложения для повышения продуктивности'],
+    ];
+
+    // Связь многие-ко-многим: коллекции <-> приложения
+    // collection_app_ids хранит массив ID приложений, входящих в коллекцию
+    public array $collectionAppIds = [
+        'col-1' => ['app-1'],
+        'col-2' => [],
+        'col-3' => [],
     ];
 
     public array $users = [];
@@ -1379,6 +1393,307 @@ $features = [
             }
 
             echo "[PASS] categories\n";
+        }
+    },
+
+    // --- COLLECTIONS: список коллекций приложений --------------------------
+    'collections' => new class extends BaseAdrSlice {
+        public function domain(Db $db, array $request): DomainResult
+        {
+            return DomainResult::success($db->collections);
+        }
+
+        public function response(DomainResult $result, array $request): string
+        {
+            $collections = $result->getData();
+
+            if (self::wantsJson($request)) {
+                if ($result->isFailure()) {
+                    return Json::error($result->getError(), 400);
+                }
+                return Json::render(['collections' => array_values($collections)]);
+            }
+
+            $content = Engine::view('collections', ['collections' => $collections]);
+            return Layout::render('Коллекции', $content);
+        }
+
+        public function runTests(Db $db): void
+        {
+            $testDb = clone $db;
+            $testDb->collections['col-test'] = ['id' => 'col-test', 'name' => 'Тестовая коллекция', 'description' => 'Описание'];
+
+            $res = $this->domain($testDb, ['METHOD' => 'GET']);
+            if ($res->isFailure() || !isset($res->getData()['col-test'])) {
+                throw new RuntimeException('Collections domain test failed.');
+            }
+
+            $json = $this->response($res, ['GET' => ['format' => 'json'], 'METHOD' => 'GET']);
+            $decoded = json_decode($json, true);
+            if (!is_array($decoded) || !isset($decoded['collections'])) {
+                throw new RuntimeException('Collections JSON response is not valid.');
+            }
+            $ids = array_column($decoded['collections'], 'id');
+            if (!in_array('col-test', $ids, true)) {
+                throw new RuntimeException('Collections JSON missing expected collection.');
+            }
+
+            $html = $this->response($res, ['METHOD' => 'GET']);
+            if (strpos($html, 'Коллекции') === false) {
+                throw new RuntimeException('Collections HTML response missing title.');
+            }
+            if (strpos($html, 'Тестовая коллекция') === false) {
+                throw new RuntimeException('Collections HTML response missing collection name.');
+            }
+
+            echo "[PASS] collections\n";
+        }
+    },
+
+    // --- COLLECTION: конкретная коллекция ----------------------------------
+    'collection' => new class extends BaseAdrSlice {
+        public function domain(Db $db, array $request): DomainResult
+        {
+            $collectionId = $request['GET']['collection_id'] ?? null;
+            
+            if ($collectionId === null || $collectionId === '') {
+                return DomainResult::failure('Не указан ID коллекции.');
+            }
+
+            // Находим коллекцию по ID
+            $collection = null;
+            foreach ($db->collections as $col) {
+                if (($col['id'] ?? '') === $collectionId) {
+                    $collection = $col;
+                    break;
+                }
+            }
+
+            if ($collection === null) {
+                return DomainResult::failure('Коллекция не найдена.');
+            }
+
+            // Получаем ID приложений, входящих в эту коллекцию (связь многие-ко-многим)
+            $collectionAppIds = $db->collectionAppIds[$collectionId] ?? [];
+            
+            // Фильтруем приложения, входящие в коллекцию
+            $apps = [];
+            foreach ($db->apps as $app) {
+                if (in_array($app['id'], $collectionAppIds, true)) {
+                    $apps[] = $app;
+                }
+            }
+
+            return DomainResult::success(['collection' => $collection, 'apps' => $apps, 'collectionAppIds' => $collectionAppIds]);
+        }
+
+        public function response(DomainResult $result, array $request): string
+        {
+            if ($result->isFailure()) {
+                if (self::wantsJson($request)) {
+                    return Json::error($result->getError(), 404);
+                }
+                return Layout::error(404, 'Коллекция не найдена', $result->getError());
+            }
+
+            $data = $result->getData();
+            $collection = $data['collection'];
+            $apps = $data['apps'];
+
+            if (self::wantsJson($request)) {
+                return Json::render(['collection' => $collection, 'apps' => array_values($apps)]);
+            }
+
+            $content = Engine::view('collection', ['collection' => $collection, 'apps' => $apps]);
+            return Layout::render($collection['name'] ?? 'Коллекция', $content);
+        }
+
+        public function runTests(Db $db): void
+        {
+            $testDb = clone $db;
+            $testDb->apps['t-1'] = ['id' => 't-1', 'dev_id' => 'x', 'title' => 'Test App', 'downloads' => 10, 'category_id' => 'cat-1'];
+            $testDb->collectionAppIds['col-1'] = ['t-1'];
+
+            // Тест: коллекция существует
+            $res = $this->domain($testDb, ['METHOD' => 'GET', 'GET' => ['collection_id' => 'col-1']]);
+            if ($res->isFailure()) {
+                throw new RuntimeException('Collection detail domain test failed: collection not found.');
+            }
+            $data = $res->getData();
+            if (!isset($data['collection']) || !isset($data['apps'])) {
+                throw new RuntimeException('Collection detail domain test failed: missing data.');
+            }
+
+            // Тест: JSON ответ
+            $json = $this->response($res, ['GET' => ['format' => 'json', 'collection_id' => 'col-1'], 'METHOD' => 'GET']);
+            $decoded = json_decode($json, true);
+            if (!is_array($decoded) || !isset($decoded['collection']) || !isset($decoded['apps'])) {
+                throw new RuntimeException('Collection detail JSON response is not valid.');
+            }
+
+            // Тест: HTML ответ
+            $html = $this->response($res, ['GET' => ['collection_id' => 'col-1'], 'METHOD' => 'GET']);
+            if (strpos($html, 'Популярные приложения') === false) {
+                throw new RuntimeException('Collection detail HTML response missing collection name.');
+            }
+
+            echo "[PASS] collection\n";
+        }
+    },
+
+    // --- COLLECTION_EDIT: редактирование коллекции -------------------------
+    'collection_edit' => new class extends BaseAdrSlice {
+        public function domain(Db $db, array $request): DomainResult
+        {
+            // Проверяем авторизацию
+            if (!Auth::check()) {
+                return DomainResult::failure('unauthorized');
+            }
+
+            $collectionId = $request['GET']['collection_id'] ?? null;
+
+            if ($collectionId === null || $collectionId === '') {
+                return DomainResult::failure('Не указан ID коллекции.');
+            }
+
+            // Находим коллекцию по ID
+            $collection = null;
+            foreach ($db->collections as $col) {
+                if (($col['id'] ?? '') === $collectionId) {
+                    $collection = $col;
+                    break;
+                }
+            }
+
+            if ($collection === null) {
+                return DomainResult::failure('Коллекция не найдена.');
+            }
+
+            // Если это POST-запрос, сохраняем изменения
+            if (($request['METHOD'] ?? 'GET') === 'POST') {
+                $name = trim((string)($request['POST']['name'] ?? ''));
+                $description = trim((string)($request['POST']['description'] ?? ''));
+                $appIds = (array)($request['POST']['app_ids'] ?? []);
+
+                if ($name === '') {
+                    return DomainResult::failure('Название коллекции не может быть пустым.');
+                }
+
+                // Обновляем данные коллекции
+                $db->collections[$collectionId]['name'] = $name;
+                $db->collections[$collectionId]['description'] = $description;
+                
+                // Обновляем связь многие-ко-многим
+                $db->collectionAppIds[$collectionId] = $appIds;
+
+                return DomainResult::success(['status' => 'updated', 'collection' => $db->collections[$collectionId]]);
+            }
+
+            // Для GET-запроса возвращаем текущие данные
+            $collectionAppIds = $db->collectionAppIds[$collectionId] ?? [];
+            
+            return DomainResult::success([
+                'collection' => $collection,
+                'apps' => $db->apps,
+                'collectionAppIds' => $collectionAppIds,
+            ]);
+        }
+
+        public function response(DomainResult $result, array $request): string
+        {
+            if ($result->isFailure()) {
+                $error = $result->getError();
+                if ($error === 'unauthorized') {
+                    return $this->redirect('?action=login');
+                }
+                if (self::wantsJson($request)) {
+                    return Json::error($result->getError(), 400);
+                }
+                return Layout::error(400, 'Ошибка', $result->getError());
+            }
+
+            $data = $result->getData();
+            
+            // Если успешно обновлено - редирект на страницу коллекции
+            if (($data['status'] ?? '') === 'updated') {
+                $collection = $data['collection'];
+                return $this->redirect('?action=collection&collection_id=' . urlencode($collection['id']));
+            }
+
+            $collection = $data['collection'];
+            $apps = $data['apps'];
+            $collectionAppIds = $data['collectionAppIds'] ?? [];
+
+            if (self::wantsJson($request)) {
+                return Json::render([
+                    'collection' => $collection,
+                    'apps' => array_values($apps),
+                    'collectionAppIds' => $collectionAppIds,
+                ]);
+            }
+
+            $content = Engine::view('collection_edit', [
+                'collection' => $collection,
+                'apps' => $apps,
+                'collectionAppIds' => $collectionAppIds,
+                'csrf' => Csrf::token(),
+            ]);
+            return Layout::render('Редактирование: ' . ($collection['name'] ?? 'Коллекция'), $content);
+        }
+
+        public function runTests(Db $db): void
+        {
+            Auth::setMockSession(['user' => ['id' => 'dev_123', 'name' => 'Test Dev']]);
+            try {
+                $testDb = clone $db;
+                $testDb->apps['t-1'] = ['id' => 't-1', 'dev_id' => 'x', 'title' => 'Test App', 'downloads' => 10, 'category_id' => 'cat-1'];
+                $testDb->apps['t-2'] = ['id' => 't-2', 'dev_id' => 'x', 'title' => 'Another App', 'downloads' => 5, 'category_id' => 'cat-1'];
+
+                // Тест: GET запрос для отображения формы
+                $res = $this->domain($testDb, ['METHOD' => 'GET', 'GET' => ['collection_id' => 'col-1']]);
+                if ($res->isFailure()) {
+                    throw new RuntimeException('Collection edit GET domain test failed.');
+                }
+                $data = $res->getData();
+                if (!isset($data['collection']) || !isset($data['apps'])) {
+                    throw new RuntimeException('Collection edit GET domain test failed: missing data.');
+                }
+
+                // Тест: POST запрос для обновления
+                $postRes = $this->domain($testDb, [
+                    'METHOD' => 'POST',
+                    'GET' => ['collection_id' => 'col-1'],
+                    'POST' => [
+                        'csrf_token' => Csrf::token(),
+                        'name' => 'Обновлённая коллекция',
+                        'description' => 'Новое описание',
+                        'app_ids' => ['t-1', 't-2'],
+                    ],
+                ]);
+                if ($postRes->isFailure()) {
+                    throw new RuntimeException('Collection edit POST domain test failed.');
+                }
+                $postData = $postRes->getData();
+                if (($postData['status'] ?? '') !== 'updated') {
+                    throw new RuntimeException('Collection edit POST did not return updated status.');
+                }
+                if ($testDb->collections['col-1']['name'] !== 'Обновлённая коллекция') {
+                    throw new RuntimeException('Collection edit POST did not update name.');
+                }
+                if ($testDb->collectionAppIds['col-1'] !== ['t-1', 't-2']) {
+                    throw new RuntimeException('Collection edit POST did not update app associations.');
+                }
+
+                // Тест: HTML ответ с формой
+                $html = $this->response($res, ['GET' => ['collection_id' => 'col-1'], 'METHOD' => 'GET']);
+                if (strpos($html, 'Редактирование коллекции') === false) {
+                    throw new RuntimeException('Collection edit HTML response missing title.');
+                }
+
+                echo "[PASS] collection_edit\n";
+            } finally {
+                Auth::setMockSession(null);
+            }
         }
     },
 
