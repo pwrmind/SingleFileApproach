@@ -10,6 +10,7 @@
     <nav>
         <?php if ($user ?? null): ?>
             <a href="?action=catalog">🏪 Каталог</a> |
+            <a href="?action=search">🔍 Поиск</a> |
             <a href="?action=publish">🚀 Публикация</a> |
             <a href="?action=profile">👤 <?= htmlspecialchars($user['name'] ?? '', ENT_QUOTES) ?></a> |
             <form method="POST" action="?action=logout" style="display:inline;">
@@ -18,6 +19,7 @@
             </form>
         <?php else: ?>
             <a href="?action=catalog">🏪 Каталог</a> |
+            <a href="?action=search">🔍 Поиск</a> |
             <a href="?action=login">🔑 Вход для авторов</a>
         <?php endif; ?>
     </nav>

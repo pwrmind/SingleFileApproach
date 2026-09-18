@@ -1,0 +1,26 @@
+<h1>🔍 Поиск приложений</h1>
+
+<form method="GET" action="">
+    <input type="hidden" name="action" value="search">
+    <div class="card">
+        <label for="query">Поиск по названию:</label>
+        <input type="text" id="query" name="q" value="<?= htmlspecialchars($query ?? '', ENT_QUOTES) ?>" placeholder="Введите название приложения...">
+        <button type="submit" class="btn">Найти</button>
+    </div>
+</form>
+
+<?php if ($query !== null && $query !== ''): ?>
+    <div style="margin-top: 20px;">
+        <?php if (empty($apps)): ?>
+            <p>Приложений по запросу "<b><?= htmlspecialchars($query, ENT_QUOTES) ?></b>" не найдено.</p>
+        <?php else: ?>
+            <p>Найдено приложений: <b><?= count($apps) ?></b></p>
+            <?php foreach ($apps as $app): ?>
+                <div class="card">
+                    <h3><a href="?action=app_details&app_id=<?= htmlspecialchars($app['id'] ?? '', ENT_QUOTES) ?>"><?= htmlspecialchars($app['title'] ?? '', ENT_QUOTES) ?></a></h3>
+                    <p>Скачиваний: <b><?= (int)($app['downloads'] ?? 0) ?></b></p>
+                </div>
+            <?php endforeach; ?>
+        <?php endif; ?>
+    </div>
+<?php endif; ?>
