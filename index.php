@@ -24,7 +24,7 @@ if (!IS_CLI && session_status() === PHP_SESSION_NONE) {
 // 0. PREFLIGHT: все шаблоны на месте?
 // =========================================================================
 (static function (): void {
-    $required = ['_layout', 'catalog', 'login', 'publish', 'error', 'app_details'];
+    $required = ['_layout', 'catalog', 'login', 'publish', 'error', 'app_details', 'profile'];
     $missing  = [];
     foreach ($required as $name) {
         $path = __DIR__ . '/views/' . $name . '.phtml';
@@ -856,6 +856,109 @@ $features = [
             }
 
             echo "[PASS] app_details\n";
+        }
+    },
+
+    // --- PROFILE: страница профиля текущего пользователя (HTML + JSON) ------
+    'profile' => new class extends BaseAdrSlice {
+        public function domain(Db $db, array $request): DomainResult
+        {
+            if (!Auth::check()) {
+                return DomainResult::failure('Требуется авторизация.');
+            }
+
+            $user = Auth::user();
+            
+            // Находим email пользователя по ID
+            $email = null;
+            foreach ($db->users as $userEmail => $userData) {
+                if ($userData['id'] === $user['id']) {
+                    $email = $userEmail;
+                    break;
+                }
+            }
+
+            return DomainResult::success([
+                'user' => $user,
+                'email' => $email,
+            ]);
+        }
+
+        public function response(DomainResult $result, array $request): string
+        {
+            $json = self::wantsJson($request);
+
+            if ($json) {
+                if ($result->isFailure()) {
+                    return Json::error($result->getError(), 401);
+                }
+                return Json::render($result->getData());
+            }
+
+            if ($result->isFailure()) {
+                return Layout::error(401, 'Требуется авторизация', $result->getError());
+            }
+
+            $data = $result->getData();
+            $content = Engine::view('profile', [
+                'user' => $data['user'],
+                'email' => $data['email'],
+            ]);
+            return Layout::render('Профиль пользователя', $content);
+        }
+
+        public function runTests(Db $db): void
+        {
+            Auth::setMockSession([]);
+            try {
+                $testDb = clone $db;
+
+                // domain() без авторизации должен вернуть ошибку
+                $noAuth = $this->domain($testDb, ['METHOD' => 'GET']);
+                if ($noAuth->isSuccess()) {
+                    throw new RuntimeException('Profile: unauthorized access should fail.');
+                }
+
+                // domain() с авторизацией должен вернуть данные
+                Auth::login($testDb->users['dev@store.com']);
+                $ok = $this->domain($testDb, ['METHOD' => 'GET']);
+                if ($ok->isFailure()) {
+                    throw new RuntimeException('Profile: authorized access failed: ' . $ok->getError());
+                }
+                $data = $ok->getData();
+                if (!isset($data['user']['id']) || !isset($data['email'])) {
+                    throw new RuntimeException('Profile: returned data missing user or email.');
+                }
+                if ($data['email'] !== 'dev@store.com') {
+                    throw new RuntimeException('Profile: email mismatch.');
+                }
+
+                // HTML response
+                $html = $this->response($ok, ['METHOD' => 'GET']);
+                if (strpos($html, 'Профиль пользователя') === false) {
+                    throw new RuntimeException('Profile: HTML response missing title.');
+                }
+
+                // JSON response
+                $json = $this->response($ok, ['METHOD' => 'GET', 'GET' => ['format' => 'json']]);
+                $decoded = json_decode($json, true);
+                if (!is_array($decoded) || !isset($decoded['user']) || !isset($decoded['email'])) {
+                    throw new RuntimeException('Profile: JSON response missing required keys.');
+                }
+                if ($decoded['email'] !== 'dev@store.com') {
+                    throw new RuntimeException('Profile: JSON email mismatch.');
+                }
+
+                // JSON error response for unauthorized
+                $jsonErr = $this->response($noAuth, ['METHOD' => 'GET', 'GET' => ['format' => 'json']]);
+                $decodedErr = json_decode($jsonErr, true);
+                if (($decodedErr['error'] ?? null) === null) {
+                    throw new RuntimeException('Profile: JSON error response broken.');
+                }
+            } finally {
+                Auth::setMockSession(null);
+            }
+            echo "[PASS] profile\n";
         }
     },
 ];

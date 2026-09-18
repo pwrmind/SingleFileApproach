@@ -25,7 +25,8 @@
         <?php if ($user ?? null): ?>
             <a href="?action=catalog">🏪 Каталог</a> |
             <a href="?action=publish">🚀 Публикация</a> |
-            <span>👤 <?= htmlspecialchars($user['name'] ?? '', ENT_QUOTES) ?></span> |
+            <a href="?action=profile">👤 Профиль</a> |
+            <span><?= htmlspecialchars($user['name'] ?? '', ENT_QUOTES) ?></span> |
             <form method="POST" action="?action=logout" style="display:inline;">
                 <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf ?? '', ENT_QUOTES) ?>">
                 <button type="submit" class="logout-btn">Выход</button>

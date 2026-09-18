@@ -1,0 +1,19 @@
+<?php if (empty($user)): ?>
+    <div class="error">
+        <p>Пользователь не авторизован.</p>
+        <p><a href="?action=login">Войти</a></p>
+    </div>
+<?php else: ?>
+    <div class="card">
+        <h1>👤 Профиль пользователя</h1>
+        
+        <p><strong>ID:</strong> <?= htmlspecialchars($user['id'] ?? '', ENT_QUOTES) ?></p>
+        <p><strong>Имя:</strong> <?= htmlspecialchars($user['name'] ?? '', ENT_QUOTES) ?></p>
+        <p><strong>Email:</strong> <?= htmlspecialchars($email ?? '', ENT_QUOTES) ?></p>
+    </div>
+    
+    <div class="actions">
+        <a href="?action=catalog">← Вернуться в каталог</a> |
+        <a href="?action=publish">🚀 Опубликовать приложение</a>
+    </div>
+<?php endif; ?>
