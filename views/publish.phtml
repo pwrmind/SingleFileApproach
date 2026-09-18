@@ -9,6 +9,17 @@
         <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf ?? '', ENT_QUOTES) ?>">
         <label>Название приложения</label>
         <input type="text" name="app_title" placeholder="Например: Фоторедактор Pro" required minlength="3">
+        
+        <label>Категория</label>
+        <select name="category_id">
+            <option value="">-- Выберите категорию --</option>
+            <?php foreach (($categories ?? []) as $cat): ?>
+                <option value="<?= htmlspecialchars($cat['id'] ?? '', ENT_QUOTES) ?>">
+                    <?= htmlspecialchars($cat['name'] ?? '', ENT_QUOTES) ?>
+                </option>
+            <?php endforeach; ?>
+        </select>
+        
         <button type="submit" class="btn">Опубликовать</button>
     </form>
 </div>

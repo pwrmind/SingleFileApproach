@@ -1,0 +1,15 @@
+<h1>📁 Категории</h1>
+
+<?php if (empty($categories)): ?>
+    <p>Пока нет ни одной категории.</p>
+<?php else: ?>
+    <ul class="category-list">
+        <?php foreach ($categories as $cat): ?>
+            <li class="card">
+                <a href="?action=catalog&category=<?= htmlspecialchars($cat['slug'] ?? '', ENT_QUOTES) ?>">
+                    <?= htmlspecialchars($cat['name'] ?? '', ENT_QUOTES) ?>
+                </a>
+            </li>
+        <?php endforeach; ?>
+    </ul>
+<?php endif; ?>

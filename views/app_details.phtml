@@ -6,6 +6,9 @@
         <p><strong>ID:</strong> <?= htmlspecialchars($app['id'] ?? '', ENT_QUOTES) ?></p>
         <p><strong>Разработчик:</strong> <a href="?action=profile&user_id=<?= htmlspecialchars($app['dev_id'] ?? '', ENT_QUOTES) ?>"><?= htmlspecialchars($app['dev_id'] ?? '', ENT_QUOTES) ?></a></p>
         <p><strong>Скачиваний:</strong> <b><?= (int)($app['downloads'] ?? 0) ?></b></p>
+        <?php if (!empty($category)): ?>
+            <p><strong>Категория:</strong> <a href="?action=catalog&category=<?= htmlspecialchars($category['slug'] ?? '', ENT_QUOTES) ?>"><?= htmlspecialchars($category['name'] ?? '', ENT_QUOTES) ?></a></p>
+        <?php endif; ?>
     </div>
     
     <div class="actions">
