@@ -314,7 +314,36 @@ $features = [
     'catalog' => new class extends BaseAdrSlice {
         public function domain(Db $db, array $request): DomainResult
         {
-            return DomainResult::success($db->apps);
+            $apps = $db->apps;
+
+            // Фильтрация по категории, если передан параметр category (slug)
+            $categorySlug = $request['GET']['category'] ?? null;
+            if ($categorySlug !== null && $categorySlug !== '') {
+                // Находим ID категории по slug
+                $categoryId = null;
+                foreach ($db->categories as $cat) {
+                    if (($cat['slug'] ?? '') === $categorySlug) {
+                        $categoryId = $cat['id'];
+                        break;
+                    }
+                }
+
+                if ($categoryId !== null) {
+                    // Фильтруем приложения по category_id
+                    $filteredApps = [];
+                    foreach ($apps as $app) {
+                        if (($app['category_id'] ?? '') === $categoryId) {
+                            $filteredApps[$app['id']] = $app;
+                        }
+                    }
+                    $apps = $filteredApps;
+                } else {
+                    // Категория с таким slug не найдена — возвращаем пустой список
+                    $apps = [];
+                }
+            }
+
+            return DomainResult::success($apps);
         }
 
         public function response(DomainResult $result, array $request): string
