@@ -863,6 +863,23 @@ $features = [
     'profile' => new class extends BaseAdrSlice {
         public function domain(Db $db, array $request): DomainResult
         {
+            // Если указан user_id в запросе, показываем профиль этого пользователя
+            $requestedUserId = $request['GET']['user_id'] ?? null;
+            
+            if ($requestedUserId !== null) {
+                // Поиск пользователя по ID
+                foreach ($db->users as $userEmail => $userData) {
+                    if ($userData['id'] === $requestedUserId) {
+                        return DomainResult::success([
+                            'user' => $userData,
+                            'email' => $userEmail,
+                        ]);
+                    }
+                }
+                return DomainResult::failure('Пользователь не найден.');
+            }
+            
+            // Если user_id не указан, показываем профиль текущего авторизованного пользователя
             if (!Auth::check()) {
                 return DomainResult::failure('Требуется авторизация.');
             }

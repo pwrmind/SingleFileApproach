@@ -4,7 +4,7 @@
     <div class="card">
         <h1><?= htmlspecialchars($app['title'] ?? '', ENT_QUOTES) ?></h1>
         <p><strong>ID:</strong> <?= htmlspecialchars($app['id'] ?? '', ENT_QUOTES) ?></p>
-        <p><strong>Разработчик:</strong> <?= htmlspecialchars($app['dev_id'] ?? '', ENT_QUOTES) ?></p>
+        <p><strong>Разработчик:</strong> <a href="?action=profile&user_id=<?= htmlspecialchars($app['dev_id'] ?? '', ENT_QUOTES) ?>"><?= htmlspecialchars($app['dev_id'] ?? '', ENT_QUOTES) ?></a></p>
         <p><strong>Скачиваний:</strong> <b><?= (int)($app['downloads'] ?? 0) ?></b></p>
     </div>
     
