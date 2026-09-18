@@ -1,1 +1,1 @@
-Nothing should be ignored based on the provided file changes. The changes only include source code files (.php, .phtml) which should not be ignored.
+Nothing should be ignored based on the provided file changes. The modified file `views/_layout.phtml` is a source code file that should not be added to .gitignore.
