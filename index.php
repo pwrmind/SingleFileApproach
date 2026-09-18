@@ -24,7 +24,7 @@ if (!IS_CLI && session_status() === PHP_SESSION_NONE) {
 // 0. PREFLIGHT: все шаблоны на месте?
 // =========================================================================
 (static function (): void {
-    $required = ['_layout', 'catalog', 'login', 'publish', 'error'];
+    $required = ['_layout', 'catalog', 'login', 'publish', 'error', 'app_details'];
     $missing  = [];
     foreach ($required as $name) {
         $path = __DIR__ . '/views/' . $name . '.phtml';
@@ -761,6 +761,101 @@ $features = [
                 Csrf::setMockToken(null);
             }
             echo "[PASS] delete_app\n";
+        }
+    },
+
+    // --- APP_DETAILS: детальная информация о приложении (read-only) --------
+    'app_details' => new class extends BaseAdrSlice {
+        public function domain(Db $db, array $request): DomainResult
+        {
+            $appId = trim((string)($request['GET']['app_id'] ?? ''));
+            if ($appId === '') {
+                return DomainResult::failure('Не указан ID приложения.');
+            }
+
+            if (!isset($db->apps[$appId])) {
+                return DomainResult::failure('Приложение не найдено.');
+            }
+
+            return DomainResult::success($db->apps[$appId]);
+        }
+
+        public function response(DomainResult $result, array $request): string
+        {
+            $json = self::wantsJson($request);
+
+            if ($json) {
+                if ($result->isFailure()) {
+                    return Json::error($result->getError(), 404);
+                }
+                return Json::render(['app' => $result->getData()]);
+            }
+
+            if ($result->isFailure()) {
+                return Layout::error(404, 'Приложение не найдено', $result->getError());
+            }
+
+            $app = $result->getData();
+            $content = Engine::view('app_details', ['app' => $app]);
+            return Layout::render(htmlspecialchars($app['title'] ?? 'Приложение', ENT_QUOTES), $content);
+        }
+
+        public function runTests(Db $db): void
+        {
+            $testDb = clone $db;
+            $testDb->apps['t-details'] = [
+                'id' => 't-details',
+                'dev_id' => 'dev_123',
+                'title' => 'Test Details App',
+                'downloads' => 42,
+            ];
+
+            // domain() без app_id должен вернуть ошибку
+            $noId = $this->domain($testDb, ['METHOD' => 'GET', 'GET' => []]);
+            if ($noId->isSuccess()) {
+                throw new RuntimeException('AppDetails: missing app_id should fail.');
+            }
+
+            // domain() с несуществующим app_id должен вернуть ошибку
+            $notFound = $this->domain($testDb, ['METHOD' => 'GET', 'GET' => ['app_id' => 'nonexistent']]);
+            if ($notFound->isSuccess()) {
+                throw new RuntimeException('AppDetails: nonexistent app should fail.');
+            }
+
+            // domain() с существующим app_id должен вернуть данные
+            $ok = $this->domain($testDb, ['METHOD' => 'GET', 'GET' => ['app_id' => 't-details']]);
+            if ($ok->isFailure()) {
+                throw new RuntimeException('AppDetails: valid app_id failed: ' . $ok->getError());
+            }
+            $data = $ok->getData();
+            if (($data['id'] ?? null) !== 't-details' || ($data['title'] ?? null) !== 'Test Details App') {
+                throw new RuntimeException('AppDetails: returned data mismatch.');
+            }
+
+            // HTML response
+            $html = $this->response($ok, ['METHOD' => 'GET', 'GET' => ['app_id' => 't-details']]);
+            if (strpos($html, 'Test Details App') === false) {
+                throw new RuntimeException('AppDetails: HTML response missing app title.');
+            }
+
+            // JSON response
+            $json = $this->response($ok, ['METHOD' => 'GET', 'GET' => ['app_id' => 't-details', 'format' => 'json']]);
+            $decoded = json_decode($json, true);
+            if (!is_array($decoded) || !isset($decoded['app'])) {
+                throw new RuntimeException('AppDetails: JSON response missing app key.');
+            }
+            if (($decoded['app']['id'] ?? null) !== 't-details') {
+                throw new RuntimeException('AppDetails: JSON response has wrong app id.');
+            }
+
+            // JSON error response
+            $jsonErr = $this->response($notFound, ['METHOD' => 'GET', 'GET' => ['app_id' => 'nonexistent', 'format' => 'json']]);
+            $decodedErr = json_decode($jsonErr, true);
+            if (($decodedErr['error'] ?? null) === null) {
+                throw new RuntimeException('AppDetails: JSON error response broken.');
+            }
+
+            echo "[PASS] app_details\n";
         }
     },
 ];
