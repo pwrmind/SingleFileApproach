@@ -24,7 +24,7 @@ if (!IS_CLI && session_status() === PHP_SESSION_NONE) {
 // 0. PREFLIGHT: все шаблоны на месте?
 // =========================================================================
 (static function (): void {
-    $required = ['_layout', 'catalog', 'login', 'publish', 'error'];
+    $required = ['_layout', 'catalog', 'login', 'publish', 'error', 'app_details'];
     $missing  = [];
     foreach ($required as $name) {
         $path = __DIR__ . '/views/' . $name . '.phtml';
@@ -603,6 +603,259 @@ $features = [
                 Csrf::setMockToken(null);
             }
             echo "[PASS] logout\n";
+        }
+    },
+
+    // --- DELETE_APP: удаление приложения (только владелец) -----------------
+    'delete_app' => new class extends BaseAdrSlice {
+        public function domain(Db $db, array $request): DomainResult
+        {
+            if (!Auth::check()) {
+                return DomainResult::failure('unauthorized');
+            }
+            if (($request['METHOD'] ?? 'GET') !== 'POST') {
+                return DomainResult::failure('Метод не поддерживается. Используйте POST.');
+            }
+
+            $appId = trim((string)($request['POST']['app_id'] ?? ''));
+            if ($appId === '') {
+                return DomainResult::failure('Не указан ID приложения.');
+            }
+
+            if (!isset($db->apps[$appId])) {
+                return DomainResult::failure('Приложение не найдено.');
+            }
+
+            $currentUserId = Auth::user()['id'];
+            if ($db->apps[$appId]['dev_id'] !== $currentUserId) {
+                return DomainResult::failure('Только владелец может удалить приложение.');
+            }
+
+            unset($db->apps[$appId]);
+            return DomainResult::success(['status' => 'deleted', 'id' => $appId]);
+        }
+
+        public function response(DomainResult $result, array $request): string
+        {
+            $json = self::wantsJson($request);
+
+            if ($json) {
+                if ($result->isFailure()) {
+                    $error = $result->getError();
+                    $code = match ($error) {
+                        'unauthorized' => 403,
+                        'Приложение не найдено.', 'Только владелец может удалить приложение.' => 404,
+                        default => 400,
+                    };
+                    return Json::error($result->getError(), $code);
+                }
+                return Json::render($result->getData() ?? ['status' => 'ok']);
+            }
+
+            if ($result->isFailure()) {
+                $error = $result->getError();
+                if ($error === 'unauthorized') {
+                    return Layout::error(403, 'Доступ запрещён', 'Войдите, чтобы удалять приложения.');
+                }
+                if ($error === 'Приложение не найдено.' || $error === 'Только владелец может удалить приложение.') {
+                    return Layout::error(404, 'Приложение не найдено', $error);
+                }
+                return Layout::error(400, 'Ошибка удаления', $error);
+            }
+
+            return $this->redirect('?action=catalog');
+        }
+
+        public function runTests(Db $db): void
+        {
+            Auth::setMockSession(['user' => ['id' => 'dev_123', 'name' => 'Tester']]);
+            Csrf::setMockToken('valid_token');
+            try {
+                $testDb = clone $db;
+                $testDb->apps['app-to-delete'] = [
+                    'id' => 'app-to-delete',
+                    'dev_id' => 'dev_123',
+                    'title' => 'ToDelete',
+                    'downloads' => 0,
+                ];
+
+                // CSRF-мидлварь отклоняет неверный токен
+                $bad = $this($testDb, [
+                    'METHOD' => 'POST',
+                    'GET'    => [],
+                    'POST'   => ['app_id' => 'app-to-delete', 'csrf_token' => 'ATTACK'],
+                ]);
+                if (strpos($bad, 'CSRF') === false) {
+                    throw new RuntimeException('DeleteApp: CSRF middleware broken.');
+                }
+
+                // Успешное удаление
+                $before = count($testDb->apps);
+                $res = $this->domain($testDb, [
+                    'METHOD' => 'POST',
+                    'POST'   => ['app_id' => 'app-to-delete', 'csrf_token' => 'valid_token'],
+                ]);
+                if ($res->isFailure()) {
+                    throw new RuntimeException('DeleteApp: domain logic failed: ' . $res->getError());
+                }
+                if (count($testDb->apps) !== $before - 1) {
+                    throw new RuntimeException('DeleteApp: app not removed from DB.');
+                }
+                if (isset($testDb->apps['app-to-delete'])) {
+                    throw new RuntimeException('DeleteApp: app still exists in DB.');
+                }
+
+                $htmlOut = $this->response($res, ['GET' => [], 'METHOD' => 'POST']);
+                if (strpos($htmlOut, BaseAdrSlice::TEST_REDIRECT_PREFIX . '?action=catalog') === false) {
+                    throw new RuntimeException('DeleteApp: success did not redirect to catalog.');
+                }
+
+                // JSON-ветка
+                $testDb2 = clone $db;
+                $testDb2->apps['app-to-delete2'] = [
+                    'id' => 'app-to-delete2',
+                    'dev_id' => 'dev_123',
+                    'title' => 'ToDelete2',
+                    'downloads' => 0,
+                ];
+                $res2 = $this->domain($testDb2, [
+                    'METHOD' => 'POST',
+                    'POST'   => ['app_id' => 'app-to-delete2', 'csrf_token' => 'valid_token'],
+                ]);
+                $json = $this->response($res2, ['GET' => ['format' => 'json'], 'METHOD' => 'POST']);
+                $decoded = json_decode($json, true);
+                if (($decoded['status'] ?? null) !== 'deleted') {
+                    throw new RuntimeException('DeleteApp: JSON success response broken.');
+                }
+
+                // JSON-ошибка при неавторизованном доступе
+                Auth::setMockSession([]);
+                $unauthRes = $this->domain($testDb, ['METHOD' => 'POST', 'POST' => ['app_id' => 'app-1']]);
+                $jsonErr = $this->response($unauthRes, ['GET' => ['format' => 'json'], 'METHOD' => 'POST']);
+                $decodedErr = json_decode($jsonErr, true);
+                if (($decodedErr['error'] ?? null) !== 'unauthorized') {
+                    throw new RuntimeException('DeleteApp: JSON unauthorized response broken.');
+                }
+
+                // Ошибка: приложение не найдено
+                Auth::setMockSession(['user' => ['id' => 'dev_123', 'name' => 'Tester']]);
+                $notFoundRes = $this->domain($testDb, ['METHOD' => 'POST', 'POST' => ['app_id' => 'nonexistent']]);
+                if ($notFoundRes->isSuccess()) {
+                    throw new RuntimeException('DeleteApp: nonexistent app should fail.');
+                }
+
+                // Ошибка: не владелец
+                Auth::setMockSession(['user' => ['id' => 'other_dev', 'name' => 'Other']]);
+                $testDb->apps['app-other'] = [
+                    'id' => 'app-other',
+                    'dev_id' => 'dev_123',
+                    'title' => 'OtherApp',
+                    'downloads' => 0,
+                ];
+                $notOwnerRes = $this->domain($testDb, ['METHOD' => 'POST', 'POST' => ['app_id' => 'app-other']]);
+                if ($notOwnerRes->isSuccess()) {
+                    throw new RuntimeException('DeleteApp: non-owner should not delete.');
+                }
+            } finally {
+                Auth::setMockSession(null);
+                Csrf::setMockToken(null);
+            }
+            echo "[PASS] delete_app\n";
+        }
+    },
+
+    // --- APP_DETAILS: детальная информация о приложении (read-only) --------
+    'app_details' => new class extends BaseAdrSlice {
+        public function domain(Db $db, array $request): DomainResult
+        {
+            $appId = trim((string)($request['GET']['app_id'] ?? ''));
+            if ($appId === '') {
+                return DomainResult::failure('Не указан ID приложения.');
+            }
+
+            if (!isset($db->apps[$appId])) {
+                return DomainResult::failure('Приложение не найдено.');
+            }
+
+            return DomainResult::success($db->apps[$appId]);
+        }
+
+        public function response(DomainResult $result, array $request): string
+        {
+            $json = self::wantsJson($request);
+
+            if ($json) {
+                if ($result->isFailure()) {
+                    return Json::error($result->getError(), 404);
+                }
+                return Json::render(['app' => $result->getData()]);
+            }
+
+            if ($result->isFailure()) {
+                return Layout::error(404, 'Приложение не найдено', $result->getError());
+            }
+
+            $app = $result->getData();
+            $content = Engine::view('app_details', ['app' => $app]);
+            return Layout::render(htmlspecialchars($app['title'] ?? 'Приложение', ENT_QUOTES), $content);
+        }
+
+        public function runTests(Db $db): void
+        {
+            $testDb = clone $db;
+            $testDb->apps['t-details'] = [
+                'id' => 't-details',
+                'dev_id' => 'dev_123',
+                'title' => 'Test Details App',
+                'downloads' => 42,
+            ];
+
+            // domain() без app_id должен вернуть ошибку
+            $noId = $this->domain($testDb, ['METHOD' => 'GET', 'GET' => []]);
+            if ($noId->isSuccess()) {
+                throw new RuntimeException('AppDetails: missing app_id should fail.');
+            }
+
+            // domain() с несуществующим app_id должен вернуть ошибку
+            $notFound = $this->domain($testDb, ['METHOD' => 'GET', 'GET' => ['app_id' => 'nonexistent']]);
+            if ($notFound->isSuccess()) {
+                throw new RuntimeException('AppDetails: nonexistent app should fail.');
+            }
+
+            // domain() с существующим app_id должен вернуть данные
+            $ok = $this->domain($testDb, ['METHOD' => 'GET', 'GET' => ['app_id' => 't-details']]);
+            if ($ok->isFailure()) {
+                throw new RuntimeException('AppDetails: valid app_id failed: ' . $ok->getError());
+            }
+            $data = $ok->getData();
+            if (($data['id'] ?? null) !== 't-details' || ($data['title'] ?? null) !== 'Test Details App') {
+                throw new RuntimeException('AppDetails: returned data mismatch.');
+            }
+
+            // HTML response
+            $html = $this->response($ok, ['METHOD' => 'GET', 'GET' => ['app_id' => 't-details']]);
+            if (strpos($html, 'Test Details App') === false) {
+                throw new RuntimeException('AppDetails: HTML response missing app title.');
+            }
+
+            // JSON response
+            $json = $this->response($ok, ['METHOD' => 'GET', 'GET' => ['app_id' => 't-details', 'format' => 'json']]);
+            $decoded = json_decode($json, true);
+            if (!is_array($decoded) || !isset($decoded['app'])) {
+                throw new RuntimeException('AppDetails: JSON response missing app key.');
+            }
+            if (($decoded['app']['id'] ?? null) !== 't-details') {
+                throw new RuntimeException('AppDetails: JSON response has wrong app id.');
+            }
+
+            // JSON error response
+            $jsonErr = $this->response($notFound, ['METHOD' => 'GET', 'GET' => ['app_id' => 'nonexistent', 'format' => 'json']]);
+            $decodedErr = json_decode($jsonErr, true);
+            if (($decodedErr['error'] ?? null) === null) {
+                throw new RuntimeException('AppDetails: JSON error response broken.');
+            }
+
+            echo "[PASS] app_details\n";
         }
     },
 ];
