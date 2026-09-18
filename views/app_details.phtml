@@ -9,9 +9,9 @@
     </div>
     
     <div class="actions">
+        <a href="?action=catalog">← Вернуться в каталог</a>
         <?php if (!empty($canEdit)): ?>
             <a href="?action=app_edit&app_id=<?= htmlspecialchars($app['id'] ?? '', ENT_QUOTES) ?>">Редактировать</a>
         <?php endif; ?>
-        <a href="?action=catalog">← Вернуться в каталог</a>
     </div>
 <?php endif; ?>
