@@ -1,0 +1,5 @@
+<div class="card">
+    <h1>⚠️ <?= htmlspecialchars($title ?? 'Ошибка', ENT_QUOTES) ?></h1>
+    <p><?= htmlspecialchars($message ?? '', ENT_QUOTES) ?></p>
+    <p><a href="?action=catalog">← Вернуться в каталог</a></p>
+</div>

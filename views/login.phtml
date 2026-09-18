@@ -1,0 +1,20 @@
+<h1>🔑 Авторизация разработчика</h1>
+
+<?php if (!empty($error)): ?>
+    <div class="error">⚠️ <?= htmlspecialchars($error, ENT_QUOTES) ?></div>
+<?php endif; ?>
+
+<?php if (!empty($isDev)): ?>
+    <div class="hint">💡 Тестовый доступ: <b>dev@store.com</b> / <b>123</b></div>
+<?php endif; ?>
+
+<div class="card">
+    <form method="POST" action="?action=login">
+        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf ?? '', ENT_QUOTES) ?>">
+        <label>Email</label>
+        <input type="email" name="email" required autocomplete="username">
+        <label>Пароль</label>
+        <input type="password" name="password" required autocomplete="current-password">
+        <button type="submit" class="btn">Войти в панель</button>
+    </form>
+</div>

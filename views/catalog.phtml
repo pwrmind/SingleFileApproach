@@ -1,0 +1,12 @@
+<h1>🏪 Каталог приложений</h1>
+
+<?php if (empty($apps)): ?>
+    <p>Пока нет ни одного приложения.</p>
+<?php else: ?>
+    <?php foreach ($apps as $app): ?>
+        <div class="card">
+            <h3><?= htmlspecialchars($app['title'] ?? '', ENT_QUOTES) ?></h3>
+            <p>Скачиваний: <b><?= (int)($app['downloads'] ?? 0) ?></b></p>
+        </div>
+    <?php endforeach; ?>
+<?php endif; ?>
