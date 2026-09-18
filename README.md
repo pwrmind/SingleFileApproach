@@ -1,4 +1,3 @@
-```markdown
 # PHP ADR Monolith
 
 > Однофайловый каркас на PHP 8.0+ для **LLM-Driven Development**: Vertical Slices, паттерн ADR (Action–Domain–Response), встроенный CI, вынесенные View и опциональный JSON API.
@@ -426,4 +425,3 @@ MIT. Используйте, форкайте, адаптируйте.
 - [Vertical Slice Architecture — Jimmy Bogard](https://jimmybogard.com/vertical-slice-architecture/)
 - [PHP: password_hash](https://www.php.net/manual/en/function.password-hash.php)
 - [PHP: Output Buffering](https://www.php.net/manual/en/book.outcontrol.php)
-```
