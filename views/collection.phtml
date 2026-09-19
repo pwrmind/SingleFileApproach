@@ -1,6 +1,6 @@
 <?php
 /** @var array $collection */
-/** @var array $apps */
+/** @var array $goods */
 ?>
 
 <h1><?= htmlspecialchars($collection['name'] ?? 'Коллекция', ENT_QUOTES) ?></h1>
@@ -13,14 +13,14 @@
     <p><a href="?action=collection_edit&collection_id=<?= htmlspecialchars($collection['id'] ?? '', ENT_QUOTES) ?>">✏️ Редактировать коллекцию</a></p>
 <?php endif; ?>
 
-<?php if (empty($apps)): ?>
-    <p>В этой коллекции пока нет приложений.</p>
+<?php if (empty($goods)): ?>
+    <p>В этой коллекции пока нет товаров.</p>
 <?php else: ?>
     <ul class="app-list">
-        <?php foreach ($apps as $app): ?>
+        <?php foreach ($goods as $good): ?>
             <li class="card">
-                <h3><a href="?action=app_details&app_id=<?= htmlspecialchars($app['id'] ?? '', ENT_QUOTES) ?>"><?= htmlspecialchars($app['title'] ?? '', ENT_QUOTES) ?></a></h3>
-                <p>Скачиваний: <b><?= (int)($app['downloads'] ?? 0) ?></b></p>
+                <h3><a href="?action=good_details&good_id=<?= htmlspecialchars($good['id'] ?? '', ENT_QUOTES) ?>"><?= htmlspecialchars($good['title'] ?? '', ENT_QUOTES) ?></a></h3>
+                <p>Цена: <b><?= number_format($good['price'] ?? 0, 0, '.', ' ') ?> ₽</b></p>
             </li>
         <?php endforeach; ?>
     </ul>

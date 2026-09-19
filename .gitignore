@@ -2,18 +2,15 @@
 # Compiled and build artifacts
 *.pyc
 __pycache__/
-*.o
-*.obj
 
 # Dependencies
-.venv/
-venv/
+vendor/
 node_modules/
+composer.lock
 
 # Logs and temp files
 *.log
 *.tmp
-*.swp
 
 # Environment
 .env
@@ -24,26 +21,22 @@ node_modules/
 .vscode/
 .idea/
 
-# Build directories
-dist/
-build/
-target/
-
-# Python specific
-*.pyo
-*.pyd
-*.so
-*.egg-info/
-.Python
-*.pot
-*.po
-*~
-.pytest_cache/
-.mypy_cache/
-.coverage
-htmlcov/
-
-# System files
+# OS generated files
 .DS_Store
 Thumbs.db
+
+# Coverage reports
+coverage/
+htmlcov/
+*.coverage
+
+# Distribution / packaging
+dist/
+build/
+*.tar.gz
+*.zip
+
+# PHP specific
+*.php~
+.htaccess
 ```
