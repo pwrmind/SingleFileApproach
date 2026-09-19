@@ -3,11 +3,13 @@
 <?php if (empty($goods)): ?>
     <p>Пока нет ни одного товара.</p>
 <?php else: ?>
-    <?php foreach ($goods as $good): ?>
-        <div class="card">
-            <h3><a href="?action=good_details&good_id=<?= htmlspecialchars($good['id'] ?? '', ENT_QUOTES) ?>"><?= htmlspecialchars($good['title'] ?? '', ENT_QUOTES) ?></a></h3>
-            <p>Цена: <b><?= number_format($good['price'] ?? 0, 0, '.', ' ') ?> ₽</b></p>
-            <p>Продаж: <?= (int)($good['sales'] ?? 0) ?> | Остаток: <?= (int)($good['stock'] ?? 0) ?> шт.</p>
-        </div>
-    <?php endforeach; ?>
+    <div class="products-grid">
+        <?php foreach ($goods as $good): ?>
+            <div class="product-tile">
+                <h3><a href="?action=good_details&good_id=<?= htmlspecialchars($good['id'] ?? '', ENT_QUOTES) ?>"><?= htmlspecialchars($good['title'] ?? '', ENT_QUOTES) ?></a></h3>
+                <p class="price"><?= number_format($good['price'] ?? 0, 0, '.', ' ') ?> ₽</p>
+                <p class="meta">Продаж: <?= (int)($good['sales'] ?? 0) ?> | Остаток: <?= (int)($good['stock'] ?? 0) ?> шт.</p>
+            </div>
+        <?php endforeach; ?>
+    </div>
 <?php endif; ?>

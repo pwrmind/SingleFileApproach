@@ -15,12 +15,14 @@
             <p>Товаров по запросу "<b><?= htmlspecialchars($query, ENT_QUOTES) ?></b>" не найдено.</p>
         <?php else: ?>
             <p>Найдено товаров: <b><?= count($goods) ?></b></p>
-            <?php foreach ($goods as $good): ?>
-                <div class="card">
-                    <h3><a href="?action=good_details&good_id=<?= htmlspecialchars($good['id'] ?? '', ENT_QUOTES) ?>"><?= htmlspecialchars($good['title'] ?? '', ENT_QUOTES) ?></a></h3>
-                    <p>Цена: <b><?= number_format($good['price'] ?? 0, 0, '.', ' ') ?> ₽</b></p>
-                </div>
-            <?php endforeach; ?>
+            <div class="products-grid">
+                <?php foreach ($goods as $good): ?>
+                    <div class="product-tile">
+                        <h3><a href="?action=good_details&good_id=<?= htmlspecialchars($good['id'] ?? '', ENT_QUOTES) ?>"><?= htmlspecialchars($good['title'] ?? '', ENT_QUOTES) ?></a></h3>
+                        <p class="price"><?= number_format($good['price'] ?? 0, 0, '.', ' ') ?> ₽</p>
+                    </div>
+                <?php endforeach; ?>
+            </div>
         <?php endif; ?>
     </div>
 <?php endif; ?>
