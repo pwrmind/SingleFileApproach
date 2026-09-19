@@ -24,7 +24,7 @@ if (!IS_CLI && session_status() === PHP_SESSION_NONE) {
 // 0. PREFLIGHT: все шаблоны на месте?
 // =========================================================================
 (static function (): void {
-    $required = ['_layout', 'catalog', 'login', 'add_good', 'error', 'good_details', 'good_edit', 'profile', 'search', 'categories', 'category_detail', 'collections', 'collection', 'collection_edit'];
+    $required = ['_layout', 'catalog', 'login', 'add_good', 'error', 'good_details', 'good_edit', 'profile', 'search', 'categories', 'category_detail', 'collections', 'collection', 'collection_edit', 'cart'];
     $missing  = [];
     foreach ($required as $name) {
         $path = __DIR__ . '/views/' . $name . '.phtml';
@@ -76,6 +76,9 @@ class Db
     ];
 
     public array $users = [];
+
+    // Корзина пользователя: массив items[good_id] => ['quantity' => int, 'added_at' => timestamp]
+    public array $cart = [];
 
     public function __construct()
     {
@@ -356,7 +359,7 @@ $features = [
                 return Json::render(['goods' => array_values($goods)]);
             }
 
-            $content = Engine::view('catalog', ['goods' => $goods]);
+            $content = Engine::view('catalog', ['goods' => $goods, 'csrf' => Csrf::token()]);
             return Layout::render('Каталог', $content);
         }
 
@@ -857,7 +860,7 @@ $features = [
             $canEdit = $data['canEdit'] ?? false;
             $category = $data['category'] ?? null;
             
-            $content = Engine::view('good_details', ['good' => $good, 'canEdit' => $canEdit, 'category' => $category]);
+            $content = Engine::view('good_details', ['good' => $good, 'canEdit' => $canEdit, 'category' => $category, 'csrf' => Csrf::token()]);
             return Layout::render(htmlspecialchars($good['title'] ?? 'Товар', ENT_QUOTES), $content);
         }
 
@@ -1249,6 +1252,7 @@ $features = [
             $content = Engine::view('search', [
                 'goods' => $goods,
                 'query' => $query,
+                'csrf' => Csrf::token(),
             ]);
             return Layout::render('Поиск товаров', $content);
         }
@@ -1520,7 +1524,7 @@ $features = [
                 return Json::render(['collection' => $collection, 'goods' => array_values($goods)]);
             }
 
-            $content = Engine::view('collection', ['collection' => $collection, 'goods' => $goods]);
+            $content = Engine::view('collection', ['collection' => $collection, 'goods' => $goods, 'csrf' => Csrf::token()]);
             return Layout::render($collection['name'] ?? 'Коллекция', $content);
         }
 
@@ -1764,7 +1768,7 @@ $features = [
                 return Json::render(['category' => $category, 'goods' => array_values($goods)]);
             }
 
-            $content = Engine::view('category_detail', ['category' => $category, 'goods' => $goods]);
+            $content = Engine::view('category_detail', ['category' => $category, 'goods' => $goods, 'csrf' => Csrf::token()]);
             return Layout::render($category['name'] ?? 'Категория', $content);
         }
 
@@ -1797,6 +1801,226 @@ $features = [
             }
 
             echo "[PASS] category_detail\n";
+        }
+    },
+
+    // --- CART: корзина пользователя -----------------------------------------
+    'cart' => new class extends BaseAdrSlice {
+        public function domain(Db $db, array $request): DomainResult
+        {
+            // Получаем корзину из сессии или используем пустую
+            $cart = $_SESSION['cart'] ?? [];
+            
+            // Собираем полную информацию о товарах в корзине
+            $cartItems = [];
+            foreach ($cart as $goodId => $itemData) {
+                if (isset($db->goods[$goodId])) {
+                    $good = $db->goods[$goodId];
+                    $cartItems[$goodId] = [
+                        'id' => $goodId,
+                        'title' => $good['title'],
+                        'price' => $good['price'],
+                        'quantity' => $itemData['quantity'] ?? 1,
+                        'added_at' => $itemData['added_at'] ?? time(),
+                    ];
+                }
+            }
+            
+            return DomainResult::success(['cartItems' => $cartItems]);
+        }
+
+        public function response(DomainResult $result, array $request): string
+        {
+            if (self::wantsJson($request)) {
+                if ($result->isFailure()) {
+                    return Json::error($result->getError(), 400);
+                }
+                return Json::render($result->getData());
+            }
+
+            $data = $result->getData();
+            $content = Engine::view('cart', [
+                'cartItems' => $data['cartItems'] ?? [],
+                'csrf' => Csrf::token(),
+            ]);
+            return Layout::render('Корзина', $content);
+        }
+
+        public function runTests(Db $db): void
+        {
+            // Тест: пустая корзина
+            $_SESSION['cart'] = [];
+            $res = $this->domain($db, ['METHOD' => 'GET']);
+            if ($res->isFailure()) {
+                throw new RuntimeException('Cart domain test failed for empty cart.');
+            }
+            $data = $res->getData();
+            if (!empty($data['cartItems'])) {
+                throw new RuntimeException('Cart should be empty initially.');
+            }
+
+            // Тест: корзина с товаром
+            $_SESSION['cart'] = [
+                'good-1' => ['quantity' => 2, 'added_at' => time()],
+            ];
+            $res = $this->domain($db, ['METHOD' => 'GET']);
+            if ($res->isFailure()) {
+                throw new RuntimeException('Cart domain test failed for non-empty cart.');
+            }
+            $data = $res->getData();
+            if (!isset($data['cartItems']['good-1'])) {
+                throw new RuntimeException('Cart should contain good-1.');
+            }
+            if ($data['cartItems']['good-1']['quantity'] !== 2) {
+                throw new RuntimeException('Cart quantity mismatch.');
+            }
+
+            // Тест: JSON ответ
+            $json = $this->response($res, ['GET' => ['format' => 'json'], 'METHOD' => 'GET']);
+            $decoded = json_decode($json, true);
+            if (!is_array($decoded) || !isset($decoded['cartItems'])) {
+                throw new RuntimeException('Cart JSON response is not valid.');
+            }
+
+            echo "[PASS] cart\n";
+        }
+    },
+
+    // --- CART_ADD: добавление товара в корзину ------------------------------
+    'cart_add' => new class extends BaseAdrSlice {
+        public function domain(Db $db, array $request): DomainResult
+        {
+            if (($request['METHOD'] ?? 'GET') !== 'POST') {
+                return DomainResult::failure('Метод должен быть POST.');
+            }
+
+            $goodId = (string)($request['POST']['good_id'] ?? '');
+            $quantity = max(1, (int)($request['POST']['quantity'] ?? 1));
+
+            if (!isset($db->goods[$goodId])) {
+                return DomainResult::failure('Товар не найден.');
+            }
+
+            // Инициализируем корзину в сессии если нужно
+            if (!isset($_SESSION['cart'])) {
+                $_SESSION['cart'] = [];
+            }
+
+            // Добавляем или обновляем товар в корзине
+            if (isset($_SESSION['cart'][$goodId])) {
+                $_SESSION['cart'][$goodId]['quantity'] += $quantity;
+            } else {
+                $_SESSION['cart'][$goodId] = [
+                    'quantity' => $quantity,
+                    'added_at' => time(),
+                ];
+            }
+
+            return DomainResult::success(['status' => 'added', 'good_id' => $goodId]);
+        }
+
+        public function response(DomainResult $result, array $request): string
+        {
+            if ($result->isSuccess()) {
+                return $this->redirect('?action=cart');
+            }
+            
+            // В случае ошибки - возвращаемся на каталог
+            return $this->redirect('?action=catalog');
+        }
+
+        public function runTests(Db $db): void
+        {
+            // Тест: добавление товара
+            $_SESSION['cart'] = [];
+            $res = $this->domain($db, [
+                'METHOD' => 'POST',
+                'POST' => ['good_id' => 'good-1', 'quantity' => 1, 'csrf_token' => Csrf::token()],
+            ]);
+            if ($res->isFailure()) {
+                throw new RuntimeException('Cart add domain test failed.');
+            }
+            if (!isset($_SESSION['cart']['good-1'])) {
+                throw new RuntimeException('Cart should contain good-1 after add.');
+            }
+            if ($_SESSION['cart']['good-1']['quantity'] !== 1) {
+                throw new RuntimeException('Cart quantity should be 1.');
+            }
+
+            // Тест: добавление того же товара ещё раз
+            $res = $this->domain($db, [
+                'METHOD' => 'POST',
+                'POST' => ['good_id' => 'good-1', 'quantity' => 2, 'csrf_token' => Csrf::token()],
+            ]);
+            if ($_SESSION['cart']['good-1']['quantity'] !== 3) {
+                throw new RuntimeException('Cart quantity should be 3 after second add.');
+            }
+
+            // Тест: добавление несуществующего товара
+            $res = $this->domain($db, [
+                'METHOD' => 'POST',
+                'POST' => ['good_id' => 'nonexistent', 'quantity' => 1, 'csrf_token' => Csrf::token()],
+            ]);
+            if ($res->isSuccess()) {
+                throw new RuntimeException('Adding nonexistent good should fail.');
+            }
+
+            echo "[PASS] cart_add\n";
+        }
+    },
+
+    // --- CART_REMOVE: удаление товара из корзины ----------------------------
+    'cart_remove' => new class extends BaseAdrSlice {
+        public function domain(Db $db, array $request): DomainResult
+        {
+            if (($request['METHOD'] ?? 'GET') !== 'POST') {
+                return DomainResult::failure('Метод должен быть POST.');
+            }
+
+            $itemId = (string)($request['POST']['item_id'] ?? '');
+
+            if (!isset($_SESSION['cart'][$itemId])) {
+                return DomainResult::failure('Товар не найден в корзине.');
+            }
+
+            // Удаляем товар из корзины
+            unset($_SESSION['cart'][$itemId]);
+
+            return DomainResult::success(['status' => 'removed', 'item_id' => $itemId]);
+        }
+
+        public function response(DomainResult $result, array $request): string
+        {
+            return $this->redirect('?action=cart');
+        }
+
+        public function runTests(Db $db): void
+        {
+            // Тест: удаление товара
+            $_SESSION['cart'] = [
+                'good-1' => ['quantity' => 2, 'added_at' => time()],
+            ];
+            $res = $this->domain($db, [
+                'METHOD' => 'POST',
+                'POST' => ['item_id' => 'good-1', 'csrf_token' => Csrf::token()],
+            ]);
+            if ($res->isFailure()) {
+                throw new RuntimeException('Cart remove domain test failed.');
+            }
+            if (isset($_SESSION['cart']['good-1'])) {
+                throw new RuntimeException('Cart should not contain good-1 after remove.');
+            }
+
+            // Тест: удаление несуществующего товара
+            $res = $this->domain($db, [
+                'METHOD' => 'POST',
+                'POST' => ['item_id' => 'nonexistent', 'csrf_token' => Csrf::token()],
+            ]);
+            if ($res->isSuccess()) {
+                throw new RuntimeException('Removing nonexistent item should fail.');
+            }
+
+            echo "[PASS] cart_remove\n";
         }
     },
 ];

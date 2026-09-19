@@ -13,6 +13,7 @@
             <a href="?action=categories">📂 Категории</a> |
             <a href="?action=collections">📦 Коллекции</a> |
             <a href="?action=search">🔍 Поиск</a> |
+            <a href="?action=cart">🛒 Корзина</a> |
             <a href="?action=add_good">💰 Продать</a> |
             <a href="?action=profile">👤 <?= htmlspecialchars($user['name'] ?? '', ENT_QUOTES) ?></a> |
             <form method="POST" action="?action=logout" style="display:inline;">
@@ -24,6 +25,7 @@
             <a href="?action=categories">📂 Категории</a> |
             <a href="?action=collections">📦 Коллекции</a> |
             <a href="?action=search">🔍 Поиск</a> |
+            <a href="?action=cart">🛒 Корзина</a> |
             <a href="?action=login">🔑 Вход для селлеров</a>
         <?php endif; ?>
     </nav>

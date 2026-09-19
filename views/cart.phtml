@@ -1,0 +1,83 @@
+<h1>🛒 Корзина</h1>
+
+<?php if (empty($cartItems)): ?>
+    <p>Ваша корзина пуста.</p>
+    <p><a href="?action=catalog">Перейти к покупкам</a></p>
+<?php else: ?>
+    <div class="cart-items">
+        <?php 
+        $total = 0;
+        foreach ($cartItems as $itemId => $item): 
+            $itemTotal = ($item['price'] ?? 0) * ($item['quantity'] ?? 1);
+            $total += $itemTotal;
+        ?>
+            <div class="cart-item">
+                <h3><?= htmlspecialchars($item['title'] ?? '', ENT_QUOTES) ?></h3>
+                <p class="price"><?= number_format($item['price'] ?? 0, 0, '.', ' ') ?> ₽ × <?= (int)($item['quantity'] ?? 1) ?> шт.</p>
+                <p class="item-total">Итого: <?= number_format($itemTotal, 0, '.', ' ') ?> ₽</p>
+                <form method="POST" action="?action=cart_remove" style="display:inline;">
+                    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf ?? '', ENT_QUOTES) ?>">
+                    <input type="hidden" name="item_id" value="<?= htmlspecialchars($itemId ?? '', ENT_QUOTES) ?>">
+                    <button type="submit" class="remove-btn">Удалить</button>
+                </form>
+            </div>
+        <?php endforeach; ?>
+    </div>
+    <div class="cart-summary">
+        <h2>Общая сумма: <?= number_format($total, 0, '.', ' ') ?> ₽</h2>
+        <button class="checkout-btn">Оформить заказ</button>
+    </div>
+<?php endif; ?>
+
+<style>
+.cart-items {
+    margin: 20px 0;
+}
+.cart-item {
+    border: 1px solid #ddd;
+    padding: 15px;
+    margin-bottom: 15px;
+    border-radius: 8px;
+    background: #f9f9f9;
+}
+.cart-item h3 {
+    margin-top: 0;
+}
+.cart-item .price {
+    font-weight: bold;
+    color: #333;
+}
+.cart-item .item-total {
+    color: #666;
+}
+.remove-btn {
+    background: #dc3545;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+}
+.remove-btn:hover {
+    background: #c82333;
+}
+.cart-summary {
+    margin-top: 20px;
+    padding: 20px;
+    border: 2px solid #28a745;
+    border-radius: 8px;
+    background: #e8f5e9;
+}
+.checkout-btn {
+    background: #28a745;
+    color: white;
+    border: none;
+    padding: 12px 24px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 16px;
+}
+.checkout-btn:hover {
+    background: #218838;
+}
+</style>
