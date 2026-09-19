@@ -1,0 +1,35 @@
+<h1>💰 Добавить товар</h1>
+
+<?php if (!empty($error)): ?>
+    <div class="error">⚠️ <?= htmlspecialchars($error, ENT_QUOTES) ?></div>
+<?php endif; ?>
+
+<div class="card">
+    <form method="POST" action="?action=add_good">
+        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf ?? '', ENT_QUOTES) ?>">
+        
+        <label>Название товара</label>
+        <input type="text" name="good_title" placeholder="Например: Премиум подписка" required minlength="3">
+        
+        <label>Цена (₽)</label>
+        <input type="number" name="price" placeholder="999" required min="1">
+        
+        <label>Описание</label>
+        <textarea name="description" rows="4" placeholder="Опишите ваш товар..."></textarea>
+        
+        <label>Категория</label>
+        <select name="category_id">
+            <option value="">-- Выберите категорию --</option>
+            <?php foreach (($categories ?? []) as $cat): ?>
+                <option value="<?= htmlspecialchars($cat['id'] ?? '', ENT_QUOTES) ?>">
+                    <?= htmlspecialchars($cat['name'] ?? '', ENT_QUOTES) ?>
+                </option>
+            <?php endforeach; ?>
+        </select>
+        
+        <label>Остаток на складе</label>
+        <input type="number" name="stock" value="100" min="0">
+        
+        <button type="submit" class="btn">Добавить товар</button>
+    </form>
+</div>

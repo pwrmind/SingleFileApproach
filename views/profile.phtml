@@ -10,6 +10,19 @@
         <p><strong>ID:</strong> <?= htmlspecialchars($user['id'] ?? '', ENT_QUOTES) ?></p>
         <p><strong>Имя:</strong> <?= htmlspecialchars($user['name'] ?? '', ENT_QUOTES) ?></p>
         <p><strong>Email:</strong> <?= htmlspecialchars($email ?? '', ENT_QUOTES) ?></p>
+        
+        <?php if (!empty($seller)): ?>
+            <hr>
+            <h2>Магазин</h2>
+            <p><strong>Название:</strong> <?= htmlspecialchars($seller['name'] ?? '', ENT_QUOTES) ?></p>
+            <?php if (!empty($seller['description'])): ?>
+                <p><strong>Описание:</strong> <?= nl2br(htmlspecialchars($seller['description'], ENT_QUOTES)) ?></p>
+            <?php endif; ?>
+            <p><strong>Рейтинг:</strong> ⭐ <?= number_format($seller['rating'] ?? 0, 1) ?></p>
+            <?php if (!empty($seller['verified'])): ?>
+                <p><span class="verified">✓ Проверенный селлер</span></p>
+            <?php endif; ?>
+        <?php endif; ?>
     </div>
     
     <div class="actions">

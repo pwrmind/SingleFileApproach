@@ -1,0 +1,47 @@
+<?php if (empty($good)): ?>
+    <p>Товар не найден.</p>
+<?php else: ?>
+    <div class="card">
+        <h1><?= htmlspecialchars($good['title'] ?? '', ENT_QUOTES) ?></h1>
+        <p><strong>ID:</strong> <?= htmlspecialchars($good['id'] ?? '', ENT_QUOTES) ?></p>
+        <p><strong>Цена:</strong> <b><?= number_format($good['price'] ?? 0, 0, '.', ' ') ?> ₽</b></p>
+        
+        <?php if (!empty($good['description'])): ?>
+            <p><strong>Описание:</strong> <?= nl2br(htmlspecialchars($good['description'], ENT_QUOTES)) ?></p>
+        <?php endif; ?>
+        
+        <p><strong>Продаж:</strong> <b><?= (int)($good['sales'] ?? 0) ?></b></p>
+        <p><strong>Остаток:</strong> <b><?= (int)($good['stock'] ?? 0) ?> шт.</b></p>
+        
+        <?php if (!empty($seller)): ?>
+            <p><strong>Селлер:</strong> 
+                <a href="?action=profile&user_id=<?= htmlspecialchars($seller['id'] ?? '', ENT_QUOTES) ?>">
+                    <?= htmlspecialchars($seller['name'] ?? $good['seller_id'] ?? '', ENT_QUOTES) ?>
+                </a>
+                <?php if (!empty($seller['verified'])): ?>
+                    <span class="verified">✓ Проверен</span>
+                <?php endif; ?>
+            </p>
+        <?php endif; ?>
+        
+        <?php if (!empty($category)): ?>
+            <p><strong>Категория:</strong> 
+                <a href="?action=category_detail&slug=<?= htmlspecialchars($category['slug'] ?? '', ENT_QUOTES) ?>">
+                    <?= htmlspecialchars($category['name'] ?? '', ENT_QUOTES) ?>
+                </a>
+            </p>
+        <?php endif; ?>
+    </div>
+    
+    <div class="actions">
+        <a href="?action=catalog">← Вернуться в каталог</a>
+        <?php if (!empty($canEdit)): ?>
+            <a href="?action=good_edit&good_id=<?= htmlspecialchars($good['id'] ?? '', ENT_QUOTES) ?>">Редактировать</a>
+            <form method="POST" action="?action=delete_good" style="display:inline;">
+                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf ?? '', ENT_QUOTES) ?>">
+                <input type="hidden" name="good_id" value="<?= htmlspecialchars($good['id'] ?? '', ENT_QUOTES) ?>">
+                <button type="submit" class="btn-delete" onclick="return confirm('Удалить товар?')">Удалить</button>
+            </form>
+        <?php endif; ?>
+    </div>
+<?php endif; ?>

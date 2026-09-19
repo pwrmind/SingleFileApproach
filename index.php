@@ -24,7 +24,7 @@ if (!IS_CLI && session_status() === PHP_SESSION_NONE) {
 // 0. PREFLIGHT: все шаблоны на месте?
 // =========================================================================
 (static function (): void {
-    $required = ['_layout', 'catalog', 'login', 'publish', 'error', 'app_details', 'app_edit', 'profile', 'search', 'categories', 'category_detail', 'collections', 'collection', 'collection_edit'];
+    $required = ['_layout', 'catalog', 'login', 'add_good', 'error', 'good_details', 'good_edit', 'profile', 'search', 'categories', 'category_detail', 'collections', 'collection', 'collection_edit'];
     $missing  = [];
     foreach ($required as $name) {
         $path = __DIR__ . '/views/' . $name . '.phtml';
@@ -49,9 +49,11 @@ if (!IS_CLI && session_status() === PHP_SESSION_NONE) {
 
 class Db
 {
-    public array $apps = [
-        'app-1' => ['id' => 'app-1', 'dev_id' => 'dev_123', 'title' => 'Telegram Dev', 'downloads' => 150, 'category_id' => 'cat-1'],
+    public array $goods = [
+        'good-1' => ['id' => 'good-1', 'seller_id' => 'seller_123', 'title' => 'Telegram Premium', 'price' => 299, 'description' => 'Премиум версия мессенджера', 'category_id' => 'cat-1', 'sales' => 150, 'stock' => 100],
     ];
+
+    public array $sellers = [];
 
     public array $categories = [
         'cat-1' => ['id' => 'cat-1', 'name' => 'Мессенджеры', 'slug' => 'messengers'],
@@ -60,15 +62,15 @@ class Db
     ];
 
     public array $collections = [
-        'col-1' => ['id' => 'col-1', 'name' => 'Популярные приложения', 'description' => 'Самые скачиваемые приложения недели'],
-        'col-2' => ['id' => 'col-2', 'name' => 'Новинки', 'description' => 'Недавно добавленные приложения'],
-        'col-3' => ['id' => 'col-3', 'name' => 'Для работы', 'description' => 'Приложения для повышения продуктивности'],
+        'col-1' => ['id' => 'col-1', 'name' => 'Популярные товары', 'description' => 'Самые продаваемые товары недели'],
+        'col-2' => ['id' => 'col-2', 'name' => 'Новинки', 'description' => 'Недавно добавленные товары'],
+        'col-3' => ['id' => 'col-3', 'name' => 'Для работы', 'description' => 'Товары для повышения продуктивности'],
     ];
 
-    // Связь многие-ко-многим: коллекции <-> приложения
-    // collection_app_ids хранит массив ID приложений, входящих в коллекцию
-    public array $collectionAppIds = [
-        'col-1' => ['app-1'],
+    // Связь многие-ко-многим: коллекции <-> товары
+    // collection_good_ids хранит массив ID товаров, входящих в коллекцию
+    public array $collectionGoodIds = [
+        'col-1' => ['good-1'],
         'col-2' => [],
         'col-3' => [],
     ];
@@ -77,10 +79,20 @@ class Db
 
     public function __construct()
     {
-        $this->users['dev@store.com'] = [
-            'id'            => 'dev_123',
+        $this->users['seller@store.com'] = [
+            'id'            => 'seller_123',
             'name'          => 'Алексей',
             'password_hash' => password_hash('123', PASSWORD_DEFAULT),
+        ];
+        
+        // Инициализируем селлера
+        $this->sellers['seller_123'] = [
+            'id' => 'seller_123',
+            'user_id' => 'seller_123',
+            'name' => 'Магазин Алексея',
+            'description' => 'Официальный магазин селлера',
+            'rating' => 4.8,
+            'verified' => true,
         ];
     }
 }
@@ -328,7 +340,7 @@ $features = [
     'catalog' => new class extends BaseAdrSlice {
         public function domain(Db $db, array $request): DomainResult
         {
-            $apps = $db->apps;
+            $apps = $db->goods;
 
             return DomainResult::success($apps);
         }
@@ -341,17 +353,17 @@ $features = [
                 if ($result->isFailure()) {
                     return Json::error($result->getError(), 400);
                 }
-                return Json::render(['apps' => array_values($apps)]);
+                return Json::render(['goods' => array_values($apps)]);
             }
 
-            $content = Engine::view('catalog', ['apps' => $apps]);
+            $content = Engine::view('catalog', ['goods' => $apps]);
             return Layout::render('Каталог', $content);
         }
 
         public function runTests(Db $db): void
         {
             $testDb = clone $db;
-            $testDb->apps['t-1'] = ['id' => 't-1', 'dev_id' => 'x', 'title' => 'Test', 'downloads' => 0];
+            $testDb->goods['t-1'] = ['id' => 't-1', 'seller_id' => 'x', 'title' => 'Test', 'sales' => 0];
 
             $res = $this->domain($testDb, ['METHOD' => 'GET']);
             if ($res->isFailure() || !isset($res->getData()['t-1'])) {
@@ -360,12 +372,12 @@ $features = [
 
             $json = $this->response($res, ['GET' => ['format' => 'json'], 'METHOD' => 'GET']);
             $decoded = json_decode($json, true);
-            if (!is_array($decoded) || !isset($decoded['apps'])) {
+            if (!is_array($decoded) || !isset($decoded['goods'])) {
                 throw new RuntimeException('Catalog JSON response is not valid.');
             }
-            $ids = array_column($decoded['apps'], 'id');
+            $ids = array_column($decoded['goods'], 'id');
             if (!in_array('t-1', $ids, true)) {
-                throw new RuntimeException('Catalog JSON missing expected app.');
+                throw new RuntimeException('Catalog JSON missing expected good.');
             }
 
             echo "[PASS] catalog\n";
@@ -419,7 +431,7 @@ $features = [
 
                 $fail = $this->domain($testDb, [
                     'METHOD' => 'POST',
-                    'POST'   => ['email' => 'dev@store.com', 'password' => 'wrong'],
+                    'POST'   => ['email' => 'seller@store.com', 'password' => 'wrong'],
                 ]);
                 if ($fail->isSuccess()) {
                     throw new RuntimeException('Login: bad password accepted.');
@@ -427,7 +439,7 @@ $features = [
 
                 $ok = $this->domain($testDb, [
                     'METHOD' => 'POST',
-                    'POST'   => ['email' => 'dev@store.com', 'password' => '123'],
+                    'POST'   => ['email' => 'seller@store.com', 'password' => '123'],
                 ]);
                 if ($ok->isFailure() || !Auth::check()) {
                     throw new RuntimeException('Login: valid credentials rejected.');
@@ -458,15 +470,15 @@ $features = [
 
             $title = trim((string)($request['POST']['app_title'] ?? ''));
             if (mb_strlen($title) < 3) {
-                return DomainResult::failure('Название приложения должно содержать минимум 3 символа.');
+                return DomainResult::failure('Название товара должно содержать минимум 3 символа.');
             }
 
-            $newId = 'app-' . (count($db->apps) + 1);
-            $db->apps[$newId] = [
+            $newId = 'good-' . (count($db->goods) + 1);
+            $db->goods[$newId] = [
                 'id'          => $newId,
-                'dev_id'      => Auth::user()['id'],
+                'seller_id'      => Auth::user()['id'],
                 'title'       => $title,
-                'downloads'   => 0,
+                'sales'   => 0,
                 'category_id' => $request['POST']['category_id'] ?? null,
             ];
 
@@ -487,24 +499,24 @@ $features = [
             }
 
             if ($result->isFailure() && $result->getError() === 'unauthorized') {
-                return Layout::error(403, 'Доступ запрещён', 'Войдите, чтобы публиковать приложения.');
+                return Layout::error(403, 'Доступ запрещён', 'Войдите, чтобы публиковать товара.');
             }
 
             if ($result->isSuccess() && ($result->getData()['status'] ?? '') === 'created') {
                 return $this->redirect('?action=catalog');
             }
 
-            $content = Engine::view('publish', [
+            $content = Engine::view('add_good', [
                 'error' => $result->isFailure() ? $result->getError() : null,
                 'csrf'  => Csrf::token(),
                 'categories' => $db->categories,
             ]);
-            return Layout::render('Публикация', $content);
+            return Layout::render('Добавить товар', $content);
         }
 
         public function runTests(Db $db): void
         {
-            Auth::setMockSession(['user' => ['id' => 'dev_123', 'name' => 'Tester']]);
+            Auth::setMockSession(['user' => ['id' => 'seller_123', 'name' => 'Tester']]);
             Csrf::setMockToken('valid_token');
             try {
                 $testDb = clone $db;
@@ -520,16 +532,16 @@ $features = [
                 }
 
                 // Успешный домен + маркер редиректа (HTML)
-                $before = count($testDb->apps);
+                $before = count($testDb->goods);
                 $res = $this->domain($testDb, [
                     'METHOD' => 'POST',
                     'POST'   => ['app_title' => 'New Awesome App', 'csrf_token' => 'valid_token'],
                 ]);
-                if ($res->isFailure() || count($testDb->apps) !== $before + 1) {
+                if ($res->isFailure() || count($testDb->goods) !== $before + 1) {
                     throw new RuntimeException('Publish: domain logic failed.');
                 }
                 if (($res->getData()['id'] ?? null) === null) {
-                    throw new RuntimeException('Publish: created app has no id.');
+                    throw new RuntimeException('Publish: created good has no id.');
                 }
 
                 $htmlOut = $this->response($res, ['GET' => [], 'METHOD' => 'POST']);
@@ -631,8 +643,8 @@ $features = [
         }
     },
 
-    // --- DELETE_APP: удаление приложения (только владелец) -----------------
-    'delete_app' => new class extends BaseAdrSlice {
+    // --- DELETE_APP: удаление товара (только владелец) -----------------
+    'delete_good' => new class extends BaseAdrSlice {
         public function domain(Db $db, array $request): DomainResult
         {
             if (!Auth::check()) {
@@ -644,19 +656,19 @@ $features = [
 
             $appId = trim((string)($request['POST']['app_id'] ?? ''));
             if ($appId === '') {
-                return DomainResult::failure('Не указан ID приложения.');
+                return DomainResult::failure('Не указан ID товара.');
             }
 
-            if (!isset($db->apps[$appId])) {
-                return DomainResult::failure('Приложение не найдено.');
+            if (!isset($db->goods[$appId])) {
+                return DomainResult::failure('Товар не найден.');
             }
 
             $currentUserId = Auth::user()['id'];
-            if ($db->apps[$appId]['dev_id'] !== $currentUserId) {
-                return DomainResult::failure('Только владелец может удалить приложение.');
+            if ($db->goods[$appId]['seller_id'] !== $currentUserId) {
+                return DomainResult::failure('Только владелец может удалить товар.');
             }
 
-            unset($db->apps[$appId]);
+            unset($db->goods[$appId]);
             return DomainResult::success(['status' => 'deleted', 'id' => $appId]);
         }
 
@@ -669,7 +681,7 @@ $features = [
                     $error = $result->getError();
                     $code = match ($error) {
                         'unauthorized' => 403,
-                        'Приложение не найдено.', 'Только владелец может удалить приложение.' => 404,
+                        'Товар не найден.', 'Только владелец может удалить товар.' => 404,
                         default => 400,
                     };
                     return Json::error($result->getError(), $code);
@@ -680,10 +692,10 @@ $features = [
             if ($result->isFailure()) {
                 $error = $result->getError();
                 if ($error === 'unauthorized') {
-                    return Layout::error(403, 'Доступ запрещён', 'Войдите, чтобы удалять приложения.');
+                    return Layout::error(403, 'Доступ запрещён', 'Войдите, чтобы удалять товара.');
                 }
-                if ($error === 'Приложение не найдено.' || $error === 'Только владелец может удалить приложение.') {
-                    return Layout::error(404, 'Приложение не найдено', $error);
+                if ($error === 'Товар не найден.' || $error === 'Только владелец может удалить товар.') {
+                    return Layout::error(404, 'Товар не найден', $error);
                 }
                 return Layout::error(400, 'Ошибка удаления', $error);
             }
@@ -693,41 +705,41 @@ $features = [
 
         public function runTests(Db $db): void
         {
-            Auth::setMockSession(['user' => ['id' => 'dev_123', 'name' => 'Tester']]);
+            Auth::setMockSession(['user' => ['id' => 'seller_123', 'name' => 'Tester']]);
             Csrf::setMockToken('valid_token');
             try {
                 $testDb = clone $db;
-                $testDb->apps['app-to-delete'] = [
-                    'id' => 'app-to-delete',
-                    'dev_id' => 'dev_123',
+                $testDb->goods['good-to-delete'] = [
+                    'id' => 'good-to-delete',
+                    'seller_id' => 'seller_123',
                     'title' => 'ToDelete',
-                    'downloads' => 0,
+                    'sales' => 0,
                 ];
 
                 // CSRF-мидлварь отклоняет неверный токен
                 $bad = $this($testDb, [
                     'METHOD' => 'POST',
                     'GET'    => [],
-                    'POST'   => ['app_id' => 'app-to-delete', 'csrf_token' => 'ATTACK'],
+                    'POST'   => ['app_id' => 'good-to-delete', 'csrf_token' => 'ATTACK'],
                 ]);
                 if (strpos($bad, 'CSRF') === false) {
                     throw new RuntimeException('DeleteApp: CSRF middleware broken.');
                 }
 
                 // Успешное удаление
-                $before = count($testDb->apps);
+                $before = count($testDb->goods);
                 $res = $this->domain($testDb, [
                     'METHOD' => 'POST',
-                    'POST'   => ['app_id' => 'app-to-delete', 'csrf_token' => 'valid_token'],
+                    'POST'   => ['app_id' => 'good-to-delete', 'csrf_token' => 'valid_token'],
                 ]);
                 if ($res->isFailure()) {
                     throw new RuntimeException('DeleteApp: domain logic failed: ' . $res->getError());
                 }
-                if (count($testDb->apps) !== $before - 1) {
-                    throw new RuntimeException('DeleteApp: app not removed from DB.');
+                if (count($testDb->goods) !== $before - 1) {
+                    throw new RuntimeException('DeleteApp: good not removed from DB.');
                 }
-                if (isset($testDb->apps['app-to-delete'])) {
-                    throw new RuntimeException('DeleteApp: app still exists in DB.');
+                if (isset($testDb->goods['good-to-delete'])) {
+                    throw new RuntimeException('DeleteApp: good still exists in DB.');
                 }
 
                 $htmlOut = $this->response($res, ['GET' => [], 'METHOD' => 'POST']);
@@ -737,15 +749,15 @@ $features = [
 
                 // JSON-ветка
                 $testDb2 = clone $db;
-                $testDb2->apps['app-to-delete2'] = [
-                    'id' => 'app-to-delete2',
-                    'dev_id' => 'dev_123',
+                $testDb2->goods['good-to-delete2'] = [
+                    'id' => 'good-to-delete2',
+                    'seller_id' => 'seller_123',
                     'title' => 'ToDelete2',
-                    'downloads' => 0,
+                    'sales' => 0,
                 ];
                 $res2 = $this->domain($testDb2, [
                     'METHOD' => 'POST',
-                    'POST'   => ['app_id' => 'app-to-delete2', 'csrf_token' => 'valid_token'],
+                    'POST'   => ['app_id' => 'good-to-delete2', 'csrf_token' => 'valid_token'],
                 ]);
                 $json = $this->response($res2, ['GET' => ['format' => 'json'], 'METHOD' => 'POST']);
                 $decoded = json_decode($json, true);
@@ -755,7 +767,7 @@ $features = [
 
                 // JSON-ошибка при неавторизованном доступе
                 Auth::setMockSession([]);
-                $unauthRes = $this->domain($testDb, ['METHOD' => 'POST', 'POST' => ['app_id' => 'app-1']]);
+                $unauthRes = $this->domain($testDb, ['METHOD' => 'POST', 'POST' => ['app_id' => 'good-1']]);
                 $jsonErr = $this->response($unauthRes, ['GET' => ['format' => 'json'], 'METHOD' => 'POST']);
                 $decodedErr = json_decode($jsonErr, true);
                 if (($decodedErr['error'] ?? null) !== 'unauthorized') {
@@ -763,7 +775,7 @@ $features = [
                 }
 
                 // Ошибка: приложение не найдено
-                Auth::setMockSession(['user' => ['id' => 'dev_123', 'name' => 'Tester']]);
+                Auth::setMockSession(['user' => ['id' => 'seller_123', 'name' => 'Tester']]);
                 $notFoundRes = $this->domain($testDb, ['METHOD' => 'POST', 'POST' => ['app_id' => 'nonexistent']]);
                 if ($notFoundRes->isSuccess()) {
                     throw new RuntimeException('DeleteApp: nonexistent app should fail.');
@@ -771,13 +783,13 @@ $features = [
 
                 // Ошибка: не владелец
                 Auth::setMockSession(['user' => ['id' => 'other_dev', 'name' => 'Other']]);
-                $testDb->apps['app-other'] = [
-                    'id' => 'app-other',
-                    'dev_id' => 'dev_123',
-                    'title' => 'OtherApp',
-                    'downloads' => 0,
+                $testDb->goods['good-other'] = [
+                    'id' => 'good-other',
+                    'seller_id' => 'seller_123',
+                    'title' => 'OtherGood',
+                    'sales' => 0,
                 ];
-                $notOwnerRes = $this->domain($testDb, ['METHOD' => 'POST', 'POST' => ['app_id' => 'app-other']]);
+                $notOwnerRes = $this->domain($testDb, ['METHOD' => 'POST', 'POST' => ['app_id' => 'good-other']]);
                 if ($notOwnerRes->isSuccess()) {
                     throw new RuntimeException('DeleteApp: non-owner should not delete.');
                 }
@@ -785,29 +797,29 @@ $features = [
                 Auth::setMockSession(null);
                 Csrf::setMockToken(null);
             }
-            echo "[PASS] delete_app\n";
+            echo "[PASS] delete_good\n";
         }
     },
 
     // --- APP_DETAILS: детальная информация о приложении (read-only) --------
-    'app_details' => new class extends BaseAdrSlice {
+    'good_details' => new class extends BaseAdrSlice {
         public function domain(Db $db, array $request): DomainResult
         {
             $appId = trim((string)($request['GET']['app_id'] ?? ''));
             if ($appId === '') {
-                return DomainResult::failure('Не указан ID приложения.');
+                return DomainResult::failure('Не указан ID товара.');
             }
 
-            if (!isset($db->apps[$appId])) {
-                return DomainResult::failure('Приложение не найдено.');
+            if (!isset($db->goods[$appId])) {
+                return DomainResult::failure('Товар не найден.');
             }
 
-            $app = $db->apps[$appId];
+            $app = $db->goods[$appId];
             $currentUser = Auth::user();
             
             // Проверяем, может ли текущий пользователь редактировать это приложение
             $canEdit = false;
-            if ($currentUser !== null && $app['dev_id'] === $currentUser['id']) {
+            if ($currentUser !== null && $app['seller_id'] === $currentUser['id']) {
                 $canEdit = true;
             }
 
@@ -834,7 +846,7 @@ $features = [
             }
 
             if ($result->isFailure()) {
-                return Layout::error(404, 'Приложение не найдено', $result->getError());
+                return Layout::error(404, 'Товар не найден', $result->getError());
             }
 
             $data = $result->getData();
@@ -842,18 +854,18 @@ $features = [
             $canEdit = $data['canEdit'] ?? false;
             $category = $data['category'] ?? null;
             
-            $content = Engine::view('app_details', ['app' => $app, 'canEdit' => $canEdit, 'category' => $category]);
-            return Layout::render(htmlspecialchars($app['title'] ?? 'Приложение', ENT_QUOTES), $content);
+            $content = Engine::view('good_details', ['app' => $app, 'canEdit' => $canEdit, 'category' => $category]);
+            return Layout::render(htmlspecialchars($app['title'] ?? 'Товар', ENT_QUOTES), $content);
         }
 
         public function runTests(Db $db): void
         {
             $testDb = clone $db;
-            $testDb->apps['t-details'] = [
+            $testDb->goods['t-details'] = [
                 'id' => 't-details',
-                'dev_id' => 'dev_123',
+                'seller_id' => 'seller_123',
                 'title' => 'Test Details App',
-                'downloads' => 42,
+                'sales' => 42,
             ];
 
             // domain() без app_id должен вернуть ошибку
@@ -901,12 +913,12 @@ $features = [
                 throw new RuntimeException('AppDetails: JSON error response broken.');
             }
 
-            echo "[PASS] app_details\n";
+            echo "[PASS] good_details\n";
         }
     },
 
-    // --- APP_EDIT: редактирование приложения (HTML only) ---------------------
-    'app_edit' => new class extends BaseAdrSlice {
+    // --- APP_EDIT: редактирование товара (HTML only) ---------------------
+    'good_edit' => new class extends BaseAdrSlice {
         public function domain(Db $db, array $request): DomainResult
         {
             if (!Auth::check()) {
@@ -915,19 +927,19 @@ $features = [
 
             $appId = trim((string)($request['GET']['app_id'] ?? $request['POST']['app_id'] ?? ''));
             if ($appId === '') {
-                return DomainResult::failure('Не указан ID приложения.');
+                return DomainResult::failure('Не указан ID товара.');
             }
 
-            if (!isset($db->apps[$appId])) {
-                return DomainResult::failure('Приложение не найдено.');
+            if (!isset($db->goods[$appId])) {
+                return DomainResult::failure('Товар не найден.');
             }
 
-            $app = $db->apps[$appId];
+            $app = $db->goods[$appId];
             $currentUser = Auth::user();
 
-            // Проверка прав: только разработчик может редактировать своё приложение
-            if ($app['dev_id'] !== $currentUser['id']) {
-                return DomainResult::failure('У вас нет прав на редактирование этого приложения.');
+            // Проверка прав: только селлер может редактировать своё приложение
+            if ($app['seller_id'] !== $currentUser['id']) {
+                return DomainResult::failure('У вас нет прав на редактирование этого товара.');
             }
 
             // GET запрос - показываем форму
@@ -938,18 +950,19 @@ $features = [
             // POST запрос - обрабатываем сохранение
             $title = trim((string)($request['POST']['title'] ?? ''));
             if (mb_strlen($title) < 3) {
-                return DomainResult::failure('Название приложения должно содержать минимум 3 символа.');
+                return DomainResult::failure('Название товара должно содержать минимум 3 символа.');
             }
 
-            // Обновляем данные приложения
-            $db->apps[$appId]['title'] = $title;
-            $db->apps[$appId]['category_id'] = $request['POST']['category_id'] ?? null;
+            // Обновляем данные товара
+            $db->goods[$appId]['title'] = $title;
+            $db->goods[$appId]['category_id'] = $request['POST']['category_id'] ?? null;
 
-            return DomainResult::success(['app' => $db->apps[$appId], 'updated' => true]);
+            return DomainResult::success(['app' => $db->goods[$appId], 'updated' => true]);
         }
 
         public function response(DomainResult $result, array $request): string
         {
+            global $db;
             $json = self::wantsJson($request);
 
             if ($json) {
@@ -974,7 +987,7 @@ $features = [
                 $category = $db->categories[$app['category_id']];
             }
 
-            $content = Engine::view('app_edit', [
+            $content = Engine::view('good_edit', [
                 'app' => $app,
                 'error' => $error,
                 'success' => $success,
@@ -983,21 +996,21 @@ $features = [
                 'categories' => $db->categories,
             ]);
 
-            return Layout::render('Редактирование приложения', $content);
+            return Layout::render('Редактирование товара', $content);
         }
 
         public function runTests(Db $db): void
         {
-            Auth::setMockSession(['user' => ['id' => 'dev_123', 'name' => 'Test User']]);
+            Auth::setMockSession(['user' => ['id' => 'seller_123', 'name' => 'Test User']]);
             Csrf::setMockToken('test');
 
             try {
                 $testDb = clone $db;
-                $testDb->apps['t-edit'] = [
+                $testDb->goods['t-edit'] = [
                     'id' => 't-edit',
-                    'dev_id' => 'dev_123',
+                    'seller_id' => 'seller_123',
                     'title' => 'Original Title',
-                    'downloads' => 10,
+                    'sales' => 10,
                 ];
 
                 // Тест: отсутствие авторизации
@@ -1006,7 +1019,7 @@ $features = [
                 if ($noAuth->isSuccess()) {
                     throw new RuntimeException('AppEdit: unauthorized access should fail.');
                 }
-                Auth::setMockSession(['user' => ['id' => 'dev_123', 'name' => 'Test User']]);
+                Auth::setMockSession(['user' => ['id' => 'seller_123', 'name' => 'Test User']]);
 
                 // Тест: отсутствие app_id
                 $noId = $this->domain($testDb, ['METHOD' => 'GET', 'GET' => []]);
@@ -1039,7 +1052,7 @@ $features = [
                 if ($postOk->isFailure()) {
                     throw new RuntimeException('AppEdit: valid POST failed: ' . $postOk->getError());
                 }
-                if (($testDb->apps['t-edit']['title'] ?? '') !== 'Updated Title') {
+                if (($testDb->goods['t-edit']['title'] ?? '') !== 'Updated Title') {
                     throw new RuntimeException('AppEdit: title was not updated.');
                 }
 
@@ -1059,7 +1072,7 @@ $features = [
                     throw new RuntimeException('AppEdit: HTML response missing app title.');
                 }
 
-                echo "[PASS] app_edit\n";
+                echo "[PASS] good_edit\n";
             } finally {
                 Auth::setMockSession(null);
                 Csrf::setMockToken(null);
@@ -1084,7 +1097,7 @@ $features = [
                         ]);
                     }
                 }
-                return DomainResult::failure('Пользователь не найден.');
+                return DomainResult::failure('Товар не найден.');
             }
             
             // Если user_id не указан, показываем профиль текущего авторизованного пользователя
@@ -1145,7 +1158,7 @@ $features = [
                 }
 
                 // domain() с авторизацией должен вернуть данные
-                Auth::login($testDb->users['dev@store.com']);
+                Auth::login($testDb->users['seller@store.com']);
                 $ok = $this->domain($testDb, ['METHOD' => 'GET']);
                 if ($ok->isFailure()) {
                     throw new RuntimeException('Profile: authorized access failed: ' . $ok->getError());
@@ -1154,7 +1167,7 @@ $features = [
                 if (!isset($data['user']['id']) || !isset($data['email'])) {
                     throw new RuntimeException('Profile: returned data missing user or email.');
                 }
-                if ($data['email'] !== 'dev@store.com') {
+                if ($data['email'] !== 'seller@store.com') {
                     throw new RuntimeException('Profile: email mismatch.');
                 }
 
@@ -1170,7 +1183,7 @@ $features = [
                 if (!is_array($decoded) || !isset($decoded['user']) || !isset($decoded['email'])) {
                     throw new RuntimeException('Profile: JSON response missing required keys.');
                 }
-                if ($decoded['email'] !== 'dev@store.com') {
+                if ($decoded['email'] !== 'seller@store.com') {
                     throw new RuntimeException('Profile: JSON email mismatch.');
                 }
 
@@ -1187,7 +1200,7 @@ $features = [
         }
     },
 
-    // --- SEARCH: поиск приложений по названию (read-only, HTML + JSON) ------
+    // --- SEARCH: поиск товаров по названию (read-only, HTML + JSON) ------
     'search' => new class extends BaseAdrSlice {
         public function domain(Db $db, array $request): DomainResult
         {
@@ -1195,19 +1208,19 @@ $features = [
             
             // Если запрос пустой, возвращаем пустой результат
             if ($query === '') {
-                return DomainResult::success(['apps' => [], 'query' => '']);
+                return DomainResult::success(['goods' => [], 'query' => '']);
             }
 
-            // Фильтрация приложений по названию (case-insensitive поиск)
+            // Фильтрация товаров по названию (case-insensitive поиск)
             $matchingApps = [];
-            foreach ($db->apps as $app) {
+            foreach ($db->goods as $app) {
                 if (mb_stripos($app['title'], $query) !== false) {
                     $matchingApps[] = $app;
                 }
             }
 
             return DomainResult::success([
-                'apps' => $matchingApps,
+                'goods' => $matchingApps,
                 'query' => $query,
             ]);
         }
@@ -1217,73 +1230,73 @@ $features = [
             $json = self::wantsJson($request);
             $data = $result->getData();
             $query = $data['query'] ?? '';
-            $apps = $data['apps'] ?? [];
+            $apps = $data['goods'] ?? [];
 
             if ($json) {
                 if ($result->isFailure()) {
                     return Json::error($result->getError(), 400);
                 }
                 return Json::render([
-                    'apps' => array_values($apps),
+                    'goods' => array_values($apps),
                     'query' => $query,
                     'count' => count($apps),
                 ]);
             }
 
             $content = Engine::view('search', [
-                'apps' => $apps,
+                'goods' => $apps,
                 'query' => $query,
             ]);
-            return Layout::render('Поиск приложений', $content);
+            return Layout::render('Поиск товаров', $content);
         }
 
         public function runTests(Db $db): void
         {
             $testDb = clone $db;
-            $testDb->apps['search-test-1'] = [
+            $testDb->goods['search-test-1'] = [
                 'id' => 'search-test-1',
-                'dev_id' => 'dev_123',
+                'seller_id' => 'seller_123',
                 'title' => 'Telegram Messenger',
-                'downloads' => 500,
+                'sales' => 500,
             ];
-            $testDb->apps['search-test-2'] = [
+            $testDb->goods['search-test-2'] = [
                 'id' => 'search-test-2',
-                'dev_id' => 'dev_123',
+                'seller_id' => 'seller_123',
                 'title' => 'Photo Editor Pro',
-                'downloads' => 200,
+                'sales' => 200,
             ];
-            $testDb->apps['search-test-3'] = [
+            $testDb->goods['search-test-3'] = [
                 'id' => 'search-test-3',
-                'dev_id' => 'dev_123',
+                'seller_id' => 'seller_123',
                 'title' => 'Game of Thrones',
-                'downloads' => 1000,
+                'sales' => 1000,
             ];
 
-            // domain() с пустым запросом должен вернуть пустой список
+            // domain() с пустым запросом должен вернуть пустой результат
             $emptyQuery = $this->domain($testDb, ['METHOD' => 'GET', 'GET' => ['q' => '']]);
             if ($emptyQuery->isFailure()) {
                 throw new RuntimeException('Search: empty query should not fail.');
             }
-            if (count($emptyQuery->getData()['apps']) !== 0) {
-                throw new RuntimeException('Search: empty query should return empty apps list.');
+            if (count($emptyQuery->getData()['goods']) !== 0) {
+                throw new RuntimeException('Search: empty query should return empty goods list.');
             }
 
-            // domain() с запросом "telegram" должен найти приложения
+            // domain() с запросом "telegram" должен найти товар
             $telegramResult = $this->domain($testDb, ['METHOD' => 'GET', 'GET' => ['q' => 'telegram']]);
             if ($telegramResult->isFailure()) {
                 throw new RuntimeException('Search: valid query failed: ' . $telegramResult->getError());
             }
-            $telegramApps = $telegramResult->getData()['apps'];
-            // Ожидаем как минимум search-test-1 (также может быть app-1 "Telegram Dev")
+            $telegramGoods = $telegramResult->getData()['goods'];
+            // Ожидаем как минимум search-test-1 (также может быть good-1 "Telegram Dev")
             $found = false;
-            foreach ($telegramApps as $app) {
-                if ($app['id'] === 'search-test-1') {
+            foreach ($telegramGoods as $good) {
+                if ($good['id'] === 'search-test-1') {
                     $found = true;
                     break;
                 }
             }
             if (!$found) {
-                throw new RuntimeException('Search: telegram query did not find expected app.');
+                throw new RuntimeException('Search: telegram query did not find expected good.');
             }
 
             // domain() с запросом "game" должен найти одно приложение
@@ -1291,9 +1304,9 @@ $features = [
             if ($gameResult->isFailure()) {
                 throw new RuntimeException('Search: game query failed.');
             }
-            $gameApps = $gameResult->getData()['apps'];
-            if (count($gameApps) !== 1 || $gameApps[0]['id'] !== 'search-test-3') {
-                throw new RuntimeException('Search: game query did not find expected app.');
+            $gameGoods = $gameResult->getData()['goods'];
+            if (count($gameGoods) !== 1 || $gameGoods[0]['id'] !== 'search-test-3') {
+                throw new RuntimeException('Search: game query did not find expected good.');
             }
 
             // domain() с запросом "notfound" должен вернуть пустой список
@@ -1301,23 +1314,23 @@ $features = [
             if ($notFoundResult->isFailure()) {
                 throw new RuntimeException('Search: notfound query should not fail.');
             }
-            if (count($notFoundResult->getData()['apps']) !== 0) {
+            if (count($notFoundResult->getData()['goods']) !== 0) {
                 throw new RuntimeException('Search: notfound query should return empty list.');
             }
 
             // HTML response
             $html = $this->response($telegramResult, ['METHOD' => 'GET', 'GET' => ['q' => 'telegram']]);
-            if (strpos($html, 'Поиск приложений') === false) {
+            if (strpos($html, 'Поиск товаров') === false) {
                 throw new RuntimeException('Search: HTML response missing title.');
             }
             if (strpos($html, 'Telegram Messenger') === false) {
-                throw new RuntimeException('Search: HTML response missing found app.');
+                throw new RuntimeException('Search: HTML response missing found good.');
             }
 
             // JSON response
             $json = $this->response($telegramResult, ['METHOD' => 'GET', 'GET' => ['q' => 'telegram', 'format' => 'json']]);
             $decoded = json_decode($json, true);
-            if (!is_array($decoded) || !isset($decoded['apps']) || !isset($decoded['query']) || !isset($decoded['count'])) {
+            if (!is_array($decoded) || !isset($decoded['goods']) || !isset($decoded['query']) || !isset($decoded['count'])) {
                 throw new RuntimeException('Search: JSON response missing required keys.');
             }
             if ($decoded['query'] !== 'telegram') {
@@ -1328,14 +1341,14 @@ $features = [
                 throw new RuntimeException('Search: JSON response count should be >= 1.');
             }
             $foundInJson = false;
-            foreach ($decoded['apps'] as $app) {
-                if ($app['id'] === 'search-test-1') {
+            foreach ($decoded['goods'] as $good) {
+                if ($good['id'] === 'search-test-1') {
                     $foundInJson = true;
                     break;
                 }
             }
             if (!$foundInJson) {
-                throw new RuntimeException('Search: JSON response has wrong apps.');
+                throw new RuntimeException('Search: JSON response has wrong goods.');
             }
 
             echo "[PASS] search\n";
@@ -1396,7 +1409,7 @@ $features = [
         }
     },
 
-    // --- COLLECTIONS: список коллекций приложений --------------------------
+    // --- COLLECTIONS: список коллекций товаров --------------------------
     'collections' => new class extends BaseAdrSlice {
         public function domain(Db $db, array $request): DomainResult
         {
@@ -1473,18 +1486,18 @@ $features = [
                 return DomainResult::failure('Коллекция не найдена.');
             }
 
-            // Получаем ID приложений, входящих в эту коллекцию (связь многие-ко-многим)
-            $collectionAppIds = $db->collectionAppIds[$collectionId] ?? [];
+            // Получаем ID товаров, входящих в эту коллекцию (связь многие-ко-многим)
+            $collectionGoodIds = $db->collectionGoodIds[$collectionId] ?? [];
             
-            // Фильтруем приложения, входящие в коллекцию
+            // Фильтруем товара, входящие в коллекцию
             $apps = [];
-            foreach ($db->apps as $app) {
-                if (in_array($app['id'], $collectionAppIds, true)) {
+            foreach ($db->goods as $app) {
+                if (in_array($app['id'], $collectionGoodIds, true)) {
                     $apps[] = $app;
                 }
             }
 
-            return DomainResult::success(['collection' => $collection, 'apps' => $apps, 'collectionAppIds' => $collectionAppIds]);
+            return DomainResult::success(['collection' => $collection, 'goods' => $apps, 'collectionGoodIds' => $collectionGoodIds]);
         }
 
         public function response(DomainResult $result, array $request): string
@@ -1498,21 +1511,21 @@ $features = [
 
             $data = $result->getData();
             $collection = $data['collection'];
-            $apps = $data['apps'];
+            $apps = $data['goods'];
 
             if (self::wantsJson($request)) {
-                return Json::render(['collection' => $collection, 'apps' => array_values($apps)]);
+                return Json::render(['collection' => $collection, 'goods' => array_values($apps)]);
             }
 
-            $content = Engine::view('collection', ['collection' => $collection, 'apps' => $apps]);
+            $content = Engine::view('collection', ['collection' => $collection, 'goods' => $apps]);
             return Layout::render($collection['name'] ?? 'Коллекция', $content);
         }
 
         public function runTests(Db $db): void
         {
             $testDb = clone $db;
-            $testDb->apps['t-1'] = ['id' => 't-1', 'dev_id' => 'x', 'title' => 'Test App', 'downloads' => 10, 'category_id' => 'cat-1'];
-            $testDb->collectionAppIds['col-1'] = ['t-1'];
+            $testDb->goods['t-1'] = ['id' => 't-1', 'seller_id' => 'x', 'title' => 'Test Good', 'sales' => 10, 'category_id' => 'cat-1'];
+            $testDb->collectionGoodIds['col-1'] = ['t-1'];
 
             // Тест: коллекция существует
             $res = $this->domain($testDb, ['METHOD' => 'GET', 'GET' => ['collection_id' => 'col-1']]);
@@ -1520,20 +1533,20 @@ $features = [
                 throw new RuntimeException('Collection detail domain test failed: collection not found.');
             }
             $data = $res->getData();
-            if (!isset($data['collection']) || !isset($data['apps'])) {
+            if (!isset($data['collection']) || !isset($data['goods'])) {
                 throw new RuntimeException('Collection detail domain test failed: missing data.');
             }
 
             // Тест: JSON ответ
             $json = $this->response($res, ['GET' => ['format' => 'json', 'collection_id' => 'col-1'], 'METHOD' => 'GET']);
             $decoded = json_decode($json, true);
-            if (!is_array($decoded) || !isset($decoded['collection']) || !isset($decoded['apps'])) {
+            if (!is_array($decoded) || !isset($decoded['collection']) || !isset($decoded['goods'])) {
                 throw new RuntimeException('Collection detail JSON response is not valid.');
             }
 
             // Тест: HTML ответ
             $html = $this->response($res, ['GET' => ['collection_id' => 'col-1'], 'METHOD' => 'GET']);
-            if (strpos($html, 'Популярные приложения') === false) {
+            if (strpos($html, 'Популярные товары') === false) {
                 throw new RuntimeException('Collection detail HTML response missing collection name.');
             }
 
@@ -1584,18 +1597,18 @@ $features = [
                 $db->collections[$collectionId]['description'] = $description;
                 
                 // Обновляем связь многие-ко-многим
-                $db->collectionAppIds[$collectionId] = $appIds;
+                $db->collectionGoodIds[$collectionId] = $appIds;
 
                 return DomainResult::success(['status' => 'updated', 'collection' => $db->collections[$collectionId]]);
             }
 
             // Для GET-запроса возвращаем текущие данные
-            $collectionAppIds = $db->collectionAppIds[$collectionId] ?? [];
+            $collectionGoodIds = $db->collectionGoodIds[$collectionId] ?? [];
             
             return DomainResult::success([
                 'collection' => $collection,
-                'apps' => $db->apps,
-                'collectionAppIds' => $collectionAppIds,
+                'goods' => $db->goods,
+                'collectionGoodIds' => $collectionGoodIds,
             ]);
         }
 
@@ -1621,21 +1634,21 @@ $features = [
             }
 
             $collection = $data['collection'];
-            $apps = $data['apps'];
-            $collectionAppIds = $data['collectionAppIds'] ?? [];
+            $apps = $data['goods'];
+            $collectionGoodIds = $data['collectionGoodIds'] ?? [];
 
             if (self::wantsJson($request)) {
                 return Json::render([
                     'collection' => $collection,
-                    'apps' => array_values($apps),
-                    'collectionAppIds' => $collectionAppIds,
+                    'goods' => array_values($apps),
+                    'collectionGoodIds' => $collectionGoodIds,
                 ]);
             }
 
             $content = Engine::view('collection_edit', [
                 'collection' => $collection,
-                'apps' => $apps,
-                'collectionAppIds' => $collectionAppIds,
+                'goods' => $apps,
+                'collectionGoodIds' => $collectionGoodIds,
                 'csrf' => Csrf::token(),
             ]);
             return Layout::render('Редактирование: ' . ($collection['name'] ?? 'Коллекция'), $content);
@@ -1643,11 +1656,11 @@ $features = [
 
         public function runTests(Db $db): void
         {
-            Auth::setMockSession(['user' => ['id' => 'dev_123', 'name' => 'Test Dev']]);
+            Auth::setMockSession(['user' => ['id' => 'seller_123', 'name' => 'Test Dev']]);
             try {
                 $testDb = clone $db;
-                $testDb->apps['t-1'] = ['id' => 't-1', 'dev_id' => 'x', 'title' => 'Test App', 'downloads' => 10, 'category_id' => 'cat-1'];
-                $testDb->apps['t-2'] = ['id' => 't-2', 'dev_id' => 'x', 'title' => 'Another App', 'downloads' => 5, 'category_id' => 'cat-1'];
+                $testDb->apps['t-1'] = ['id' => 't-1', 'seller_id' => 'x', 'title' => 'Test App', 'sales' => 10, 'category_id' => 'cat-1'];
+                $testDb->apps['t-2'] = ['id' => 't-2', 'seller_id' => 'x', 'title' => 'Another App', 'sales' => 5, 'category_id' => 'cat-1'];
 
                 // Тест: GET запрос для отображения формы
                 $res = $this->domain($testDb, ['METHOD' => 'GET', 'GET' => ['collection_id' => 'col-1']]);
@@ -1655,7 +1668,7 @@ $features = [
                     throw new RuntimeException('Collection edit GET domain test failed.');
                 }
                 $data = $res->getData();
-                if (!isset($data['collection']) || !isset($data['apps'])) {
+                if (!isset($data['collection']) || !isset($data['goods'])) {
                     throw new RuntimeException('Collection edit GET domain test failed: missing data.');
                 }
 
@@ -1680,7 +1693,7 @@ $features = [
                 if ($testDb->collections['col-1']['name'] !== 'Обновлённая коллекция') {
                     throw new RuntimeException('Collection edit POST did not update name.');
                 }
-                if ($testDb->collectionAppIds['col-1'] !== ['t-1', 't-2']) {
+                if ($testDb->collectionGoodIds['col-1'] !== ['t-1', 't-2']) {
                     throw new RuntimeException('Collection edit POST did not update app associations.');
                 }
 
@@ -1720,15 +1733,15 @@ $features = [
                 return DomainResult::failure('Категория не найдена.');
             }
 
-            // Фильтруем приложения по category_id
+            // Фильтруем товара по category_id
             $apps = [];
-            foreach ($db->apps as $app) {
+            foreach ($db->goods as $app) {
                 if (($app['category_id'] ?? '') === $category['id']) {
                     $apps[$app['id']] = $app;
                 }
             }
 
-            return DomainResult::success(['category' => $category, 'apps' => $apps]);
+            return DomainResult::success(['category' => $category, 'goods' => $apps]);
         }
 
         public function response(DomainResult $result, array $request): string
@@ -1742,20 +1755,20 @@ $features = [
 
             $data = $result->getData();
             $category = $data['category'];
-            $apps = $data['apps'];
+            $apps = $data['goods'];
 
             if (self::wantsJson($request)) {
-                return Json::render(['category' => $category, 'apps' => array_values($apps)]);
+                return Json::render(['category' => $category, 'goods' => array_values($apps)]);
             }
 
-            $content = Engine::view('category_detail', ['category' => $category, 'apps' => $apps]);
+            $content = Engine::view('category_detail', ['category' => $category, 'goods' => $apps]);
             return Layout::render($category['name'] ?? 'Категория', $content);
         }
 
         public function runTests(Db $db): void
         {
             $testDb = clone $db;
-            $testDb->apps['t-1'] = ['id' => 't-1', 'dev_id' => 'x', 'title' => 'Test App', 'downloads' => 10, 'category_id' => 'cat-1'];
+            $testDb->apps['t-1'] = ['id' => 't-1', 'seller_id' => 'x', 'title' => 'Test App', 'sales' => 10, 'category_id' => 'cat-1'];
 
             // Тест: категория существует
             $res = $this->domain($testDb, ['METHOD' => 'GET', 'GET' => ['slug' => 'messengers']]);
@@ -1763,14 +1776,14 @@ $features = [
                 throw new RuntimeException('Category detail domain test failed: category not found.');
             }
             $data = $res->getData();
-            if (!isset($data['category']) || !isset($data['apps'])) {
+            if (!isset($data['category']) || !isset($data['goods'])) {
                 throw new RuntimeException('Category detail domain test failed: missing data.');
             }
 
             // Тест: JSON ответ
             $json = $this->response($res, ['GET' => ['format' => 'json', 'slug' => 'messengers'], 'METHOD' => 'GET']);
             $decoded = json_decode($json, true);
-            if (!is_array($decoded) || !isset($decoded['category']) || !isset($decoded['apps'])) {
+            if (!is_array($decoded) || !isset($decoded['category']) || !isset($decoded['goods'])) {
                 throw new RuntimeException('Category detail JSON response is not valid.');
             }
 
