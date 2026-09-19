@@ -177,8 +177,8 @@ final public function __invoke(Db $db, array $request): string
 ### 4. Рендеринг
 
 ```php
-Engine::view('catalog', ['apps' => $apps]);
-// → подставляет $apps в views/catalog.phtml через include + ob_start
+Engine::view('catalog', ['goods' => $goods]);
+// → подставляет $goods в views/catalog.phtml через include + ob_start
 ```
 
 `EXTR_SKIP` защищает служебные переменные. `try/finally` + `ob_get_level()` гарантируют очистку буферов даже при исключении.
@@ -212,14 +212,14 @@ Layout::render('Каталог', $content);
         }
 
         $id = (string)($request['POST']['app_id'] ?? '');
-        if (!isset($db->apps[$id])) {
+        if (!isset($db->goods[$id])) {
             return DomainResult::failure('Приложение не найдено.');
         }
-        if ($db->apps[$id]['dev_id'] !== Auth::user()['id']) {
+        if ($db->goods[$id]['dev_id'] !== Auth::user()['id']) {
             return DomainResult::failure('Вы не владелец этого приложения.');
         }
 
-        unset($db->apps[$id]);
+        unset($db->goods[$id]);
         return DomainResult::success(['status' => 'deleted']);
     }
 
@@ -245,18 +245,18 @@ Layout::render('Каталог', $content);
         Csrf::setMockToken('token');
         try {
             $testDb = clone $db;
-            $testDb->apps['own']    = ['id' => 'own',    'dev_id' => 'dev_123', 'title' => 'Mine', 'downloads' => 0];
-            $testDb->apps['foe']    = ['id' => 'foe',    'dev_id' => 'other',   'title' => 'Not mine', 'downloads' => 0];
+            $testDb->goods['own']    = ['id' => 'own',    'dev_id' => 'dev_123', 'title' => 'Mine', 'downloads' => 0];
+            $testDb->goods['foe']    = ['id' => 'foe',    'dev_id' => 'other',   'title' => 'Not mine', 'downloads' => 0];
 
             // Нельзя удалить чужое
             $res = $this->domain($testDb, ['METHOD' => 'POST', 'POST' => ['app_id' => 'foe']]);
-            if ($res->isSuccess() || isset($testDb->apps['foe']) === false) {
+            if ($res->isSuccess() || isset($testDb->goods['foe']) === false) {
                 throw new RuntimeException('DeleteApp: allowed to delete other developer\'s app.');
             }
 
             // Можно удалить своё
             $res = $this->domain($testDb, ['METHOD' => 'POST', 'POST' => ['app_id' => 'own']]);
-            if ($res->isFailure() || isset($testDb->apps['own'])) {
+            if ($res->isFailure() || isset($testDb->goods['own'])) {
                 throw new RuntimeException('DeleteApp: could not delete own app.');
             }
         } finally {
@@ -347,7 +347,7 @@ Exit code: `0` при успехе, `1` при любом провале.
 ```bash
 # Каталог
 curl "http://localhost:8000/?action=catalog&format=json"
-# {"apps":[{"id":"app-1","dev_id":"dev_123","title":"Telegram Dev","downloads":150}]}
+# {"goods":[{"id":"app-1","dev_id":"dev_123","title":"Telegram Dev","downloads":150}]}
 
 # Публикация (нужна сессия и CSRF)
 curl -X POST "http://localhost:8000/?action=publish&format=json" \

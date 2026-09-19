@@ -1,15 +1,15 @@
 <?php
 /** @var array $category */
-/** @var array $apps */
+/** @var array $goods */
 ?>
 
 <h1><?= htmlspecialchars($category['name'] ?? 'Категория', ENT_QUOTES) ?></h1>
 
-<?php if (empty($apps)): ?>
+<?php if (empty($goods)): ?>
     <p>В этой категории пока нет приложений.</p>
 <?php else: ?>
     <ul class="app-list">
-        <?php foreach ($apps as $app): ?>
+        <?php foreach ($goods as $app): ?>
             <li class="card">
                 <h3><a href="?action=app_details&app_id=<?= htmlspecialchars($app['id'] ?? '', ENT_QUOTES) ?>"><?= htmlspecialchars($app['title'] ?? '', ENT_QUOTES) ?></a></h3>
                 <p>Скачиваний: <b><?= (int)($app['downloads'] ?? 0) ?></b></p>
