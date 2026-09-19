@@ -308,42 +308,92 @@ $features = [
     'catalog' => new class extends BaseAdrSlice {
         public function domain(Db $db, array $request): DomainResult
         {
-            return DomainResult::success($db->apps);
+            $page = max(1, (int)($request['GET']['page'] ?? 1));
+            $perPage = max(1, min(100, (int)($request['GET']['per_page'] ?? 10)));
+            
+            $apps = $db->apps;
+            $total = count($apps);
+            $totalPages = (int)ceil($total / $perPage);
+            
+            if ($page > $totalPages && $total > 0) {
+                $page = $totalPages;
+            }
+            
+            $offset = ($page - 1) * $perPage;
+            $pagedApps = array_slice(array_values($apps), $offset, $perPage);
+            
+            // Сохраняем ключи для консистентности
+            $pagedApps = array_combine(array_column($pagedApps, 'id'), $pagedApps) ?: [];
+            
+            return DomainResult::success([
+                'apps' => $pagedApps,
+                'pagination' => [
+                    'current_page' => $page,
+                    'per_page' => $perPage,
+                    'total_items' => $total,
+                    'total_pages' => $totalPages,
+                ],
+            ]);
         }
 
         public function response(DomainResult $result, array $request): string
         {
-            $apps = $result->getData();
-
-            if (self::wantsJson($request)) {
-                if ($result->isFailure()) {
+            if ($result->isFailure()) {
+                if (self::wantsJson($request)) {
                     return Json::error($result->getError(), 400);
                 }
-                return Json::render(['apps' => array_values($apps)]);
+                $content = Engine::view('catalog', ['apps' => [], 'pagination' => null, 'error' => $result->getError()]);
+                return Layout::render('Каталог', $content);
+            }
+            
+            $data = $result->getData();
+            $apps = $data['apps'];
+            $pagination = $data['pagination'];
+
+            if (self::wantsJson($request)) {
+                return Json::render([
+                    'apps' => array_values($apps),
+                    'pagination' => $pagination,
+                ]);
             }
 
-            $content = Engine::view('catalog', ['apps' => $apps]);
+            $content = Engine::view('catalog', ['apps' => $apps, 'pagination' => $pagination]);
             return Layout::render('Каталог', $content);
         }
 
         public function runTests(Db $db): void
         {
             $testDb = clone $db;
-            $testDb->apps['t-1'] = ['id' => 't-1', 'dev_id' => 'x', 'title' => 'Test', 'downloads' => 0];
+            // Добавляем больше приложений для теста пагинации
+            for ($i = 2; $i <= 25; $i++) {
+                $testDb->apps['t-' . $i] = ['id' => 't-' . $i, 'dev_id' => 'x', 'title' => 'Test ' . $i, 'downloads' => $i * 10];
+            }
 
-            $res = $this->domain($testDb, ['METHOD' => 'GET']);
-            if ($res->isFailure() || !isset($res->getData()['t-1'])) {
+            // Тест первой страницы
+            $res = $this->domain($testDb, ['METHOD' => 'GET', 'GET' => ['page' => '1', 'per_page' => '10']]);
+            if ($res->isFailure()) {
                 throw new RuntimeException('Catalog domain test failed.');
             }
-
-            $json = $this->response($res, ['GET' => ['format' => 'json'], 'METHOD' => 'GET']);
-            $decoded = json_decode($json, true);
-            if (!is_array($decoded) || !isset($decoded['apps'])) {
-                throw new RuntimeException('Catalog JSON response is not valid.');
+            $data = $res->getData();
+            if (!isset($data['apps']) || !isset($data['pagination'])) {
+                throw new RuntimeException('Catalog pagination data missing.');
             }
-            $ids = array_column($decoded['apps'], 'id');
-            if (!in_array('t-1', $ids, true)) {
-                throw new RuntimeException('Catalog JSON missing expected app.');
+            if ($data['pagination']['current_page'] !== 1 || $data['pagination']['total_pages'] !== 3) {
+                throw new RuntimeException('Catalog pagination calculation error.');
+            }
+
+            // Тест второй страницы
+            $res2 = $this->domain($testDb, ['METHOD' => 'GET', 'GET' => ['page' => '2', 'per_page' => '10']]);
+            $data2 = $res2->getData();
+            if ($data2['pagination']['current_page'] !== 2) {
+                throw new RuntimeException('Catalog page 2 test failed.');
+            }
+
+            // Тест JSON ответа с пагинацией
+            $json = $this->response($res, ['GET' => ['format' => 'json', 'page' => '1', 'per_page' => '10'], 'METHOD' => 'GET']);
+            $decoded = json_decode($json, true);
+            if (!is_array($decoded) || !isset($decoded['apps']) || !isset($decoded['pagination'])) {
+                throw new RuntimeException('Catalog JSON response with pagination is not valid.');
             }
 
             echo "[PASS] catalog\n";
