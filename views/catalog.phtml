@@ -1,5 +1,9 @@
 <h1>🏪 Каталог приложений</h1>
 
+<?php if (!empty($error)): ?>
+    <p class="error"><?= htmlspecialchars($error, ENT_QUOTES) ?></p>
+<?php endif; ?>
+
 <?php if (empty($apps)): ?>
     <p>Пока нет ни одного приложения.</p>
 <?php else: ?>
@@ -9,4 +13,26 @@
             <p>Скачиваний: <b><?= (int)($app['downloads'] ?? 0) ?></b></p>
         </div>
     <?php endforeach; ?>
+    
+    <?php if (!empty($pagination) && $pagination['total_pages'] > 1): ?>
+        <nav class="pagination">
+            <span>Страница <?= $pagination['current_page'] ?> из <?= $pagination['total_pages'] ?></span>
+            
+            <?php if ($pagination['current_page'] > 1): ?>
+                <a href="?action=catalog&page=<?= $pagination['current_page'] - 1 ?>&per_page=<?= $pagination['per_page'] ?>">← Назад</a>
+            <?php endif; ?>
+            
+            <?php for ($i = 1; $i <= $pagination['total_pages']; $i++): ?>
+                <?php if ($i === $pagination['current_page']): ?>
+                    <strong>[<?= $i ?>]</strong>
+                <?php else: ?>
+                    <a href="?action=catalog&page=<?= $i ?>&per_page=<?= $pagination['per_page'] ?>"><?= $i ?></a>
+                <?php endif; ?>
+            <?php endfor; ?>
+            
+            <?php if ($pagination['current_page'] < $pagination['total_pages']): ?>
+                <a href="?action=catalog&page=<?= $pagination['current_page'] + 1 ?>&per_page=<?= $pagination['per_page'] ?>">Вперёд →</a>
+            <?php endif; ?>
+        </nav>
+    <?php endif; ?>
 <?php endif; ?>
