@@ -11,9 +11,15 @@
     <div class="products-grid">
         <?php foreach ($goods as $good): ?>
             <div class="product-tile">
-                <h3><a href="?action=app_details&good_id=<?= htmlspecialchars($good['id'] ?? '', ENT_QUOTES) ?>"><?= htmlspecialchars($good['title'] ?? '', ENT_QUOTES) ?></a></h3>
+                <h3><a href="?action=good_details&good_id=<?= htmlspecialchars($good['id'] ?? '', ENT_QUOTES) ?>"><?= htmlspecialchars($good['title'] ?? '', ENT_QUOTES) ?></a></h3>
                 <p class="price"><?= number_format($good['price'] ?? 0, 0, '.', ' ') ?> ₽</p>
                 <p class="meta">Скачиваний: <?= (int)($good['downloads'] ?? 0) ?></p>
+                <form method="POST" action="?action=cart_add" style="margin-top: 10px;">
+                    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf ?? '', ENT_QUOTES) ?>">
+                    <input type="hidden" name="good_id" value="<?= htmlspecialchars($good['id'] ?? '', ENT_QUOTES) ?>">
+                    <input type="number" name="quantity" value="1" min="1" style="width: 60px;">
+                    <button type="submit" class="btn">🛒 В корзину</button>
+                </form>
             </div>
         <?php endforeach; ?>
     </div>

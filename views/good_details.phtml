@@ -31,6 +31,15 @@
                 </a>
             </p>
         <?php endif; ?>
+        
+        <div class="actions" style="margin-top: 20px;">
+            <form method="POST" action="?action=cart_add" style="display:inline;">
+                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf ?? '', ENT_QUOTES) ?>">
+                <input type="hidden" name="good_id" value="<?= htmlspecialchars($good['id'] ?? '', ENT_QUOTES) ?>">
+                <input type="number" name="quantity" value="1" min="1" max="<?= (int)($good['stock'] ?? 1) ?>" style="width: 60px;">
+                <button type="submit" class="btn">🛒 В корзину</button>
+            </form>
+        </div>
     </div>
     
     <div class="actions">
