@@ -535,7 +535,7 @@ $features = [
                 $before = count($testDb->goods);
                 $res = $this->domain($testDb, [
                     'METHOD' => 'POST',
-                    'POST'   => ['good_title' => 'New Awesome App', 'csrf_token' => 'valid_token'],
+                    'POST'   => ['good_title' => 'New Awesome Good', 'csrf_token' => 'valid_token'],
                 ]);
                 if ($res->isFailure() || count($testDb->goods) !== $before + 1) {
                     throw new RuntimeException('Publish: domain logic failed.');
@@ -864,7 +864,7 @@ $features = [
             $testDb->goods['t-details'] = [
                 'id' => 't-details',
                 'seller_id' => 'seller_123',
-                'title' => 'Test Details App',
+                'title' => 'Test Details Good',
                 'sales' => 42,
             ];
 
@@ -886,13 +886,13 @@ $features = [
                 throw new RuntimeException('AppDetails: valid good_id failed: ' . $ok->getError());
             }
             $data = $ok->getData();
-            if (($data['good']['id'] ?? null) !== 't-details' || ($data['good']['title'] ?? null) !== 'Test Details App') {
+            if (($data['good']['id'] ?? null) !== 't-details' || ($data['good']['title'] ?? null) !== 'Test Details Good') {
                 throw new RuntimeException('AppDetails: returned data mismatch.');
             }
 
             // HTML response
             $html = $this->response($ok, ['METHOD' => 'GET', 'GET' => ['good_id' => 't-details']]);
-            if (strpos($html, 'Test Details App') === false) {
+            if (strpos($html, 'Test Details Good') === false) {
                 throw new RuntimeException('AppDetails: HTML response missing good title.');
             }
 
@@ -1659,8 +1659,8 @@ $features = [
             Auth::setMockSession(['user' => ['id' => 'seller_123', 'name' => 'Test Dev']]);
             try {
                 $testDb = clone $db;
-                $testDb->goods['t-1'] = ['id' => 't-1', 'seller_id' => 'x', 'title' => 'Test App', 'sales' => 10, 'category_id' => 'cat-1'];
-                $testDb->goods['t-2'] = ['id' => 't-2', 'seller_id' => 'x', 'title' => 'Another App', 'sales' => 5, 'category_id' => 'cat-1'];
+                $testDb->goods['t-1'] = ['id' => 't-1', 'seller_id' => 'x', 'title' => 'Test Good', 'sales' => 10, 'category_id' => 'cat-1'];
+                $testDb->goods['t-2'] = ['id' => 't-2', 'seller_id' => 'x', 'title' => 'Another Good', 'sales' => 5, 'category_id' => 'cat-1'];
 
                 // Тест: GET запрос для отображения формы
                 $res = $this->domain($testDb, ['METHOD' => 'GET', 'GET' => ['collection_id' => 'col-1']]);
@@ -1768,7 +1768,7 @@ $features = [
         public function runTests(Db $db): void
         {
             $testDb = clone $db;
-            $testDb->goods['t-1'] = ['id' => 't-1', 'seller_id' => 'x', 'title' => 'Test App', 'sales' => 10, 'category_id' => 'cat-1'];
+            $testDb->goods['t-1'] = ['id' => 't-1', 'seller_id' => 'x', 'title' => 'Test Good', 'sales' => 10, 'category_id' => 'cat-1'];
 
             // Тест: категория существует
             $res = $this->domain($testDb, ['METHOD' => 'GET', 'GET' => ['slug' => 'messengers']]);
