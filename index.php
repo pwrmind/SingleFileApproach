@@ -478,7 +478,9 @@ $features = [
                 'id'          => $newId,
                 'seller_id'      => Auth::user()['id'],
                 'title'       => $title,
+                'price' => $request['POST']['price'] ?? null,
                 'sales'   => 0,
+                'stock' => $request['POST']['stock'] ?? null,
                 'category_id' => $request['POST']['category_id'] ?? null,
             ];
 
