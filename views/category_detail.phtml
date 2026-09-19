@@ -8,14 +8,15 @@
 <?php if (empty($goods)): ?>
     <p>В этой категории пока нет приложений.</p>
 <?php else: ?>
-    <ul class="good-list">
+    <div class="products-grid">
         <?php foreach ($goods as $good): ?>
-            <li class="card">
+            <div class="product-tile">
                 <h3><a href="?action=app_details&good_id=<?= htmlspecialchars($good['id'] ?? '', ENT_QUOTES) ?>"><?= htmlspecialchars($good['title'] ?? '', ENT_QUOTES) ?></a></h3>
-                <p>Скачиваний: <b><?= (int)($good['downloads'] ?? 0) ?></b></p>
-            </li>
+                <p class="price"><?= number_format($good['price'] ?? 0, 0, '.', ' ') ?> ₽</p>
+                <p class="meta">Скачиваний: <?= (int)($good['downloads'] ?? 0) ?></p>
+            </div>
         <?php endforeach; ?>
-    </ul>
+    </div>
 <?php endif; ?>
 
 <p><a href="?action=categories">← Вернуться к списку категорий</a></p>
