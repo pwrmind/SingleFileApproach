@@ -340,23 +340,23 @@ $features = [
     'catalog' => new class extends BaseAdrSlice {
         public function domain(Db $db, array $request): DomainResult
         {
-            $apps = $db->goods;
+            $goods = $db->goods;
 
-            return DomainResult::success($apps);
+            return DomainResult::success($goods);
         }
 
         public function response(DomainResult $result, array $request): string
         {
-            $apps = $result->getData();
+            $goods = $result->getData();
 
             if (self::wantsJson($request)) {
                 if ($result->isFailure()) {
                     return Json::error($result->getError(), 400);
                 }
-                return Json::render(['goods' => array_values($apps)]);
+                return Json::render(['goods' => array_values($goods)]);
             }
 
-            $content = Engine::view('catalog', ['goods' => $apps]);
+            $content = Engine::view('catalog', ['goods' => $goods]);
             return Layout::render('Каталог', $content);
         }
 
@@ -468,7 +468,7 @@ $features = [
                 return DomainResult::success(['status' => 'show_form']);
             }
 
-            $title = trim((string)($request['POST']['app_title'] ?? ''));
+            $title = trim((string)($request['POST']['good_title'] ?? ''));
             if (mb_strlen($title) < 3) {
                 return DomainResult::failure('Название товара должно содержать минимум 3 символа.');
             }
@@ -525,7 +525,7 @@ $features = [
                 $bad = $this($testDb, [
                     'METHOD' => 'POST',
                     'GET'    => [],
-                    'POST'   => ['app_title' => 'Valid Title', 'csrf_token' => 'ATTACK'],
+                    'POST'   => ['good_title' => 'Valid Title', 'csrf_token' => 'ATTACK'],
                 ]);
                 if (strpos($bad, 'CSRF') === false) {
                     throw new RuntimeException('Publish: CSRF middleware broken.');
@@ -535,7 +535,7 @@ $features = [
                 $before = count($testDb->goods);
                 $res = $this->domain($testDb, [
                     'METHOD' => 'POST',
-                    'POST'   => ['app_title' => 'New Awesome App', 'csrf_token' => 'valid_token'],
+                    'POST'   => ['good_title' => 'New Awesome App', 'csrf_token' => 'valid_token'],
                 ]);
                 if ($res->isFailure() || count($testDb->goods) !== $before + 1) {
                     throw new RuntimeException('Publish: domain logic failed.');
@@ -1212,15 +1212,15 @@ $features = [
             }
 
             // Фильтрация товаров по названию (case-insensitive поиск)
-            $matchingApps = [];
+            $matchingGoods = [];
             foreach ($db->goods as $app) {
                 if (mb_stripos($app['title'], $query) !== false) {
-                    $matchingApps[] = $app;
+                    $matchingGoods[] = $app;
                 }
             }
 
             return DomainResult::success([
-                'goods' => $matchingApps,
+                'goods' => $matchingGoods,
                 'query' => $query,
             ]);
         }
@@ -1230,21 +1230,21 @@ $features = [
             $json = self::wantsJson($request);
             $data = $result->getData();
             $query = $data['query'] ?? '';
-            $apps = $data['goods'] ?? [];
+            $goods = $data['goods'] ?? [];
 
             if ($json) {
                 if ($result->isFailure()) {
                     return Json::error($result->getError(), 400);
                 }
                 return Json::render([
-                    'goods' => array_values($apps),
+                    'goods' => array_values($goods),
                     'query' => $query,
-                    'count' => count($apps),
+                    'count' => count($goods),
                 ]);
             }
 
             $content = Engine::view('search', [
-                'goods' => $apps,
+                'goods' => $goods,
                 'query' => $query,
             ]);
             return Layout::render('Поиск товаров', $content);
@@ -1490,14 +1490,14 @@ $features = [
             $collectionGoodIds = $db->collectionGoodIds[$collectionId] ?? [];
             
             // Фильтруем товара, входящие в коллекцию
-            $apps = [];
+            $goods = [];
             foreach ($db->goods as $app) {
                 if (in_array($app['id'], $collectionGoodIds, true)) {
-                    $apps[] = $app;
+                    $goods[] = $app;
                 }
             }
 
-            return DomainResult::success(['collection' => $collection, 'goods' => $apps, 'collectionGoodIds' => $collectionGoodIds]);
+            return DomainResult::success(['collection' => $collection, 'goods' => $goods, 'collectionGoodIds' => $collectionGoodIds]);
         }
 
         public function response(DomainResult $result, array $request): string
@@ -1511,13 +1511,13 @@ $features = [
 
             $data = $result->getData();
             $collection = $data['collection'];
-            $apps = $data['goods'];
+            $goods = $data['goods'];
 
             if (self::wantsJson($request)) {
-                return Json::render(['collection' => $collection, 'goods' => array_values($apps)]);
+                return Json::render(['collection' => $collection, 'goods' => array_values($goods)]);
             }
 
-            $content = Engine::view('collection', ['collection' => $collection, 'goods' => $apps]);
+            $content = Engine::view('collection', ['collection' => $collection, 'goods' => $goods]);
             return Layout::render($collection['name'] ?? 'Коллекция', $content);
         }
 
@@ -1634,20 +1634,20 @@ $features = [
             }
 
             $collection = $data['collection'];
-            $apps = $data['goods'];
+            $goods = $data['goods'];
             $collectionGoodIds = $data['collectionGoodIds'] ?? [];
 
             if (self::wantsJson($request)) {
                 return Json::render([
                     'collection' => $collection,
-                    'goods' => array_values($apps),
+                    'goods' => array_values($goods),
                     'collectionGoodIds' => $collectionGoodIds,
                 ]);
             }
 
             $content = Engine::view('collection_edit', [
                 'collection' => $collection,
-                'goods' => $apps,
+                'goods' => $goods,
                 'collectionGoodIds' => $collectionGoodIds,
                 'csrf' => Csrf::token(),
             ]);
@@ -1659,8 +1659,8 @@ $features = [
             Auth::setMockSession(['user' => ['id' => 'seller_123', 'name' => 'Test Dev']]);
             try {
                 $testDb = clone $db;
-                $testDb->apps['t-1'] = ['id' => 't-1', 'seller_id' => 'x', 'title' => 'Test App', 'sales' => 10, 'category_id' => 'cat-1'];
-                $testDb->apps['t-2'] = ['id' => 't-2', 'seller_id' => 'x', 'title' => 'Another App', 'sales' => 5, 'category_id' => 'cat-1'];
+                $testDb->goods['t-1'] = ['id' => 't-1', 'seller_id' => 'x', 'title' => 'Test App', 'sales' => 10, 'category_id' => 'cat-1'];
+                $testDb->goods['t-2'] = ['id' => 't-2', 'seller_id' => 'x', 'title' => 'Another App', 'sales' => 5, 'category_id' => 'cat-1'];
 
                 // Тест: GET запрос для отображения формы
                 $res = $this->domain($testDb, ['METHOD' => 'GET', 'GET' => ['collection_id' => 'col-1']]);
@@ -1734,14 +1734,14 @@ $features = [
             }
 
             // Фильтруем товара по category_id
-            $apps = [];
+            $goods = [];
             foreach ($db->goods as $app) {
                 if (($app['category_id'] ?? '') === $category['id']) {
-                    $apps[$app['id']] = $app;
+                    $goods[$app['id']] = $app;
                 }
             }
 
-            return DomainResult::success(['category' => $category, 'goods' => $apps]);
+            return DomainResult::success(['category' => $category, 'goods' => $goods]);
         }
 
         public function response(DomainResult $result, array $request): string
@@ -1755,20 +1755,20 @@ $features = [
 
             $data = $result->getData();
             $category = $data['category'];
-            $apps = $data['goods'];
+            $goods = $data['goods'];
 
             if (self::wantsJson($request)) {
-                return Json::render(['category' => $category, 'goods' => array_values($apps)]);
+                return Json::render(['category' => $category, 'goods' => array_values($goods)]);
             }
 
-            $content = Engine::view('category_detail', ['category' => $category, 'goods' => $apps]);
+            $content = Engine::view('category_detail', ['category' => $category, 'goods' => $goods]);
             return Layout::render($category['name'] ?? 'Категория', $content);
         }
 
         public function runTests(Db $db): void
         {
             $testDb = clone $db;
-            $testDb->apps['t-1'] = ['id' => 't-1', 'seller_id' => 'x', 'title' => 'Test App', 'sales' => 10, 'category_id' => 'cat-1'];
+            $testDb->goods['t-1'] = ['id' => 't-1', 'seller_id' => 'x', 'title' => 'Test App', 'sales' => 10, 'category_id' => 'cat-1'];
 
             // Тест: категория существует
             $res = $this->domain($testDb, ['METHOD' => 'GET', 'GET' => ['slug' => 'messengers']]);
