@@ -351,7 +351,7 @@ curl "http://localhost:8000/?action=catalog&format=json"
 
 # Публикация (нужна сессия и CSRF)
 curl -X POST "http://localhost:8000/?action=publish&format=json" \
-     -d "app_title=My App" -d "csrf_token=<token>"
+     -d "good_title=My App" -d "csrf_token=<token>"
 # {"status":"created","id":"app-2"}
 
 # Ошибка — 403
