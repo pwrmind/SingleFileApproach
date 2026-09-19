@@ -211,7 +211,7 @@ Layout::render('Каталог', $content);
             return DomainResult::success(['status' => 'show_form']);
         }
 
-        $id = (string)($request['POST']['app_id'] ?? '');
+        $id = (string)($request['POST']['good_id'] ?? '');
         if (!isset($db->goods[$id])) {
             return DomainResult::failure('Приложение не найдено.');
         }
@@ -249,13 +249,13 @@ Layout::render('Каталог', $content);
             $testDb->goods['foe']    = ['id' => 'foe',    'dev_id' => 'other',   'title' => 'Not mine', 'downloads' => 0];
 
             // Нельзя удалить чужое
-            $res = $this->domain($testDb, ['METHOD' => 'POST', 'POST' => ['app_id' => 'foe']]);
+            $res = $this->domain($testDb, ['METHOD' => 'POST', 'POST' => ['good_id' => 'foe']]);
             if ($res->isSuccess() || isset($testDb->goods['foe']) === false) {
                 throw new RuntimeException('DeleteApp: allowed to delete other developer\'s app.');
             }
 
             // Можно удалить своё
-            $res = $this->domain($testDb, ['METHOD' => 'POST', 'POST' => ['app_id' => 'own']]);
+            $res = $this->domain($testDb, ['METHOD' => 'POST', 'POST' => ['good_id' => 'own']]);
             if ($res->isFailure() || isset($testDb->goods['own'])) {
                 throw new RuntimeException('DeleteApp: could not delete own app.');
             }
@@ -281,7 +281,7 @@ Layout::render('Каталог', $content);
     <form method="POST" action="?action=delete_app">
         <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf ?? '', ENT_QUOTES) ?>">
         <label>ID приложения</label>
-        <input type="text" name="app_id" required>
+        <input type="text" name="good_id" required>
         <button type="submit" class="btn">Удалить</button>
     </form>
 </div>

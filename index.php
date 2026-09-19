@@ -654,22 +654,22 @@ $features = [
                 return DomainResult::failure('Метод не поддерживается. Используйте POST.');
             }
 
-            $appId = trim((string)($request['POST']['app_id'] ?? ''));
-            if ($appId === '') {
+            $goodId = trim((string)($request['POST']['good_id'] ?? ''));
+            if ($goodId === '') {
                 return DomainResult::failure('Не указан ID товара.');
             }
 
-            if (!isset($db->goods[$appId])) {
+            if (!isset($db->goods[$goodId])) {
                 return DomainResult::failure('Товар не найден.');
             }
 
             $currentUserId = Auth::user()['id'];
-            if ($db->goods[$appId]['seller_id'] !== $currentUserId) {
+            if ($db->goods[$goodId]['seller_id'] !== $currentUserId) {
                 return DomainResult::failure('Только владелец может удалить товар.');
             }
 
-            unset($db->goods[$appId]);
-            return DomainResult::success(['status' => 'deleted', 'id' => $appId]);
+            unset($db->goods[$goodId]);
+            return DomainResult::success(['status' => 'deleted', 'id' => $goodId]);
         }
 
         public function response(DomainResult $result, array $request): string
@@ -720,7 +720,7 @@ $features = [
                 $bad = $this($testDb, [
                     'METHOD' => 'POST',
                     'GET'    => [],
-                    'POST'   => ['app_id' => 'good-to-delete', 'csrf_token' => 'ATTACK'],
+                    'POST'   => ['good_id' => 'good-to-delete', 'csrf_token' => 'ATTACK'],
                 ]);
                 if (strpos($bad, 'CSRF') === false) {
                     throw new RuntimeException('DeleteApp: CSRF middleware broken.');
@@ -730,7 +730,7 @@ $features = [
                 $before = count($testDb->goods);
                 $res = $this->domain($testDb, [
                     'METHOD' => 'POST',
-                    'POST'   => ['app_id' => 'good-to-delete', 'csrf_token' => 'valid_token'],
+                    'POST'   => ['good_id' => 'good-to-delete', 'csrf_token' => 'valid_token'],
                 ]);
                 if ($res->isFailure()) {
                     throw new RuntimeException('DeleteApp: domain logic failed: ' . $res->getError());
@@ -757,7 +757,7 @@ $features = [
                 ];
                 $res2 = $this->domain($testDb2, [
                     'METHOD' => 'POST',
-                    'POST'   => ['app_id' => 'good-to-delete2', 'csrf_token' => 'valid_token'],
+                    'POST'   => ['good_id' => 'good-to-delete2', 'csrf_token' => 'valid_token'],
                 ]);
                 $json = $this->response($res2, ['GET' => ['format' => 'json'], 'METHOD' => 'POST']);
                 $decoded = json_decode($json, true);
@@ -767,7 +767,7 @@ $features = [
 
                 // JSON-ошибка при неавторизованном доступе
                 Auth::setMockSession([]);
-                $unauthRes = $this->domain($testDb, ['METHOD' => 'POST', 'POST' => ['app_id' => 'good-1']]);
+                $unauthRes = $this->domain($testDb, ['METHOD' => 'POST', 'POST' => ['good_id' => 'good-1']]);
                 $jsonErr = $this->response($unauthRes, ['GET' => ['format' => 'json'], 'METHOD' => 'POST']);
                 $decodedErr = json_decode($jsonErr, true);
                 if (($decodedErr['error'] ?? null) !== 'unauthorized') {
@@ -776,9 +776,9 @@ $features = [
 
                 // Ошибка: приложение не найдено
                 Auth::setMockSession(['user' => ['id' => 'seller_123', 'name' => 'Tester']]);
-                $notFoundRes = $this->domain($testDb, ['METHOD' => 'POST', 'POST' => ['app_id' => 'nonexistent']]);
+                $notFoundRes = $this->domain($testDb, ['METHOD' => 'POST', 'POST' => ['good_id' => 'nonexistent']]);
                 if ($notFoundRes->isSuccess()) {
-                    throw new RuntimeException('DeleteApp: nonexistent app should fail.');
+                    throw new RuntimeException('DeleteApp: nonexistent good should fail.');
                 }
 
                 // Ошибка: не владелец
@@ -789,7 +789,7 @@ $features = [
                     'title' => 'OtherGood',
                     'sales' => 0,
                 ];
-                $notOwnerRes = $this->domain($testDb, ['METHOD' => 'POST', 'POST' => ['app_id' => 'good-other']]);
+                $notOwnerRes = $this->domain($testDb, ['METHOD' => 'POST', 'POST' => ['good_id' => 'good-other']]);
                 if ($notOwnerRes->isSuccess()) {
                     throw new RuntimeException('DeleteApp: non-owner should not delete.');
                 }
@@ -805,31 +805,31 @@ $features = [
     'good_details' => new class extends BaseAdrSlice {
         public function domain(Db $db, array $request): DomainResult
         {
-            $appId = trim((string)($request['GET']['app_id'] ?? ''));
-            if ($appId === '') {
+            $goodId = trim((string)($request['GET']['good_id'] ?? ''));
+            if ($goodId === '') {
                 return DomainResult::failure('Не указан ID товара.');
             }
 
-            if (!isset($db->goods[$appId])) {
+            if (!isset($db->goods[$goodId])) {
                 return DomainResult::failure('Товар не найден.');
             }
 
-            $app = $db->goods[$appId];
+            $good = $db->goods[$goodId];
             $currentUser = Auth::user();
             
             // Проверяем, может ли текущий пользователь редактировать это приложение
             $canEdit = false;
-            if ($currentUser !== null && $app['seller_id'] === $currentUser['id']) {
+            if ($currentUser !== null && $good['seller_id'] === $currentUser['id']) {
                 $canEdit = true;
             }
 
             // Добавляем информацию о категории
             $category = null;
-            if (isset($app['category_id']) && isset($db->categories[$app['category_id']])) {
-                $category = $db->categories[$app['category_id']];
+            if (isset($good['category_id']) && isset($db->categories[$good['category_id']])) {
+                $category = $db->categories[$good['category_id']];
             }
 
-            return DomainResult::success(['app' => $app, 'canEdit' => $canEdit, 'category' => $category]);
+            return DomainResult::success(['good' => $good, 'canEdit' => $canEdit, 'category' => $category]);
         }
 
         public function response(DomainResult $result, array $request): string
@@ -841,8 +841,8 @@ $features = [
                     return Json::error($result->getError(), 404);
                 }
                 $data = $result->getData();
-                $app = $data['app'] ?? $data;
-                return Json::render(['app' => $app, 'category' => $data['category'] ?? null]);
+                $good = $data['good'] ?? $data;
+                return Json::render(['good' => $good, 'category' => $data['category'] ?? null]);
             }
 
             if ($result->isFailure()) {
@@ -850,12 +850,12 @@ $features = [
             }
 
             $data = $result->getData();
-            $app = $data['app'] ?? $data;
+            $good = $data['good'] ?? $data;
             $canEdit = $data['canEdit'] ?? false;
             $category = $data['category'] ?? null;
             
-            $content = Engine::view('good_details', ['app' => $app, 'canEdit' => $canEdit, 'category' => $category]);
-            return Layout::render(htmlspecialchars($app['title'] ?? 'Товар', ENT_QUOTES), $content);
+            $content = Engine::view('good_details', ['good' => $good, 'canEdit' => $canEdit, 'category' => $category]);
+            return Layout::render(htmlspecialchars($good['title'] ?? 'Товар', ENT_QUOTES), $content);
         }
 
         public function runTests(Db $db): void
@@ -868,46 +868,46 @@ $features = [
                 'sales' => 42,
             ];
 
-            // domain() без app_id должен вернуть ошибку
+            // domain() без good_id должен вернуть ошибку
             $noId = $this->domain($testDb, ['METHOD' => 'GET', 'GET' => []]);
             if ($noId->isSuccess()) {
-                throw new RuntimeException('AppDetails: missing app_id should fail.');
+                throw new RuntimeException('AppDetails: missing good_id should fail.');
             }
 
-            // domain() с несуществующим app_id должен вернуть ошибку
-            $notFound = $this->domain($testDb, ['METHOD' => 'GET', 'GET' => ['app_id' => 'nonexistent']]);
+            // domain() с несуществующим good_id должен вернуть ошибку
+            $notFound = $this->domain($testDb, ['METHOD' => 'GET', 'GET' => ['good_id' => 'nonexistent']]);
             if ($notFound->isSuccess()) {
-                throw new RuntimeException('AppDetails: nonexistent app should fail.');
+                throw new RuntimeException('AppDetails: nonexistent good should fail.');
             }
 
-            // domain() с существующим app_id должен вернуть данные
-            $ok = $this->domain($testDb, ['METHOD' => 'GET', 'GET' => ['app_id' => 't-details']]);
+            // domain() с существующим good_id должен вернуть данные
+            $ok = $this->domain($testDb, ['METHOD' => 'GET', 'GET' => ['good_id' => 't-details']]);
             if ($ok->isFailure()) {
-                throw new RuntimeException('AppDetails: valid app_id failed: ' . $ok->getError());
+                throw new RuntimeException('AppDetails: valid good_id failed: ' . $ok->getError());
             }
             $data = $ok->getData();
-            if (($data['app']['id'] ?? null) !== 't-details' || ($data['app']['title'] ?? null) !== 'Test Details App') {
+            if (($data['good']['id'] ?? null) !== 't-details' || ($data['good']['title'] ?? null) !== 'Test Details App') {
                 throw new RuntimeException('AppDetails: returned data mismatch.');
             }
 
             // HTML response
-            $html = $this->response($ok, ['METHOD' => 'GET', 'GET' => ['app_id' => 't-details']]);
+            $html = $this->response($ok, ['METHOD' => 'GET', 'GET' => ['good_id' => 't-details']]);
             if (strpos($html, 'Test Details App') === false) {
-                throw new RuntimeException('AppDetails: HTML response missing app title.');
+                throw new RuntimeException('AppDetails: HTML response missing good title.');
             }
 
             // JSON response
-            $json = $this->response($ok, ['METHOD' => 'GET', 'GET' => ['app_id' => 't-details', 'format' => 'json']]);
+            $json = $this->response($ok, ['METHOD' => 'GET', 'GET' => ['good_id' => 't-details', 'format' => 'json']]);
             $decoded = json_decode($json, true);
-            if (!is_array($decoded) || !isset($decoded['app'])) {
-                throw new RuntimeException('AppDetails: JSON response missing app key.');
+            if (!is_array($decoded) || !isset($decoded['good'])) {
+                throw new RuntimeException('AppDetails: JSON response missing good key.');
             }
-            if (($decoded['app']['id'] ?? null) !== 't-details') {
-                throw new RuntimeException('AppDetails: JSON response has wrong app id.');
+            if (($decoded['good']['id'] ?? null) !== 't-details') {
+                throw new RuntimeException('AppDetails: JSON response has wrong good id.');
             }
 
             // JSON error response
-            $jsonErr = $this->response($notFound, ['METHOD' => 'GET', 'GET' => ['app_id' => 'nonexistent', 'format' => 'json']]);
+            $jsonErr = $this->response($notFound, ['METHOD' => 'GET', 'GET' => ['good_id' => 'nonexistent', 'format' => 'json']]);
             $decodedErr = json_decode($jsonErr, true);
             if (($decodedErr['error'] ?? null) === null) {
                 throw new RuntimeException('AppDetails: JSON error response broken.');
@@ -925,26 +925,26 @@ $features = [
                 return DomainResult::failure('Требуется авторизация.');
             }
 
-            $appId = trim((string)($request['GET']['app_id'] ?? $request['POST']['app_id'] ?? ''));
-            if ($appId === '') {
+            $goodId = trim((string)($request['GET']['good_id'] ?? $request['POST']['good_id'] ?? ''));
+            if ($goodId === '') {
                 return DomainResult::failure('Не указан ID товара.');
             }
 
-            if (!isset($db->goods[$appId])) {
+            if (!isset($db->goods[$goodId])) {
                 return DomainResult::failure('Товар не найден.');
             }
 
-            $app = $db->goods[$appId];
+            $good = $db->goods[$goodId];
             $currentUser = Auth::user();
 
             // Проверка прав: только селлер может редактировать своё приложение
-            if ($app['seller_id'] !== $currentUser['id']) {
+            if ($good['seller_id'] !== $currentUser['id']) {
                 return DomainResult::failure('У вас нет прав на редактирование этого товара.');
             }
 
             // GET запрос - показываем форму
             if (($request['METHOD'] ?? 'GET') !== 'POST') {
-                return DomainResult::success(['app' => $app, 'show_form' => true]);
+                return DomainResult::success(['good' => $good, 'show_form' => true]);
             }
 
             // POST запрос - обрабатываем сохранение
@@ -954,10 +954,10 @@ $features = [
             }
 
             // Обновляем данные товара
-            $db->goods[$appId]['title'] = $title;
-            $db->goods[$appId]['category_id'] = $request['POST']['category_id'] ?? null;
+            $db->goods[$goodId]['title'] = $title;
+            $db->goods[$goodId]['category_id'] = $request['POST']['category_id'] ?? null;
 
-            return DomainResult::success(['app' => $db->goods[$appId], 'updated' => true]);
+            return DomainResult::success(['good' => $db->goods[$goodId], 'updated' => true]);
         }
 
         public function response(DomainResult $result, array $request): string
@@ -977,18 +977,18 @@ $features = [
             }
 
             $data = $result->getData();
-            $app = $data['app'] ?? null;
+            $good = $data['good'] ?? null;
             $error = $result->getError() ?: null;
             $success = $data['updated'] ?? false;
 
             // Получаем информацию о категории, если она указана
             $category = null;
-            if ($app && isset($app['category_id']) && isset($db->categories[$app['category_id']])) {
-                $category = $db->categories[$app['category_id']];
+            if ($good && isset($good['category_id']) && isset($db->categories[$good['category_id']])) {
+                $category = $db->categories[$good['category_id']];
             }
 
             $content = Engine::view('good_edit', [
-                'app' => $app,
+                'good' => $good,
                 'error' => $error,
                 'success' => $success,
                 'csrf' => Csrf::token(),
@@ -1015,39 +1015,39 @@ $features = [
 
                 // Тест: отсутствие авторизации
                 Auth::setMockSession(null);
-                $noAuth = $this->domain($testDb, ['METHOD' => 'GET', 'GET' => ['app_id' => 't-edit']]);
+                $noAuth = $this->domain($testDb, ['METHOD' => 'GET', 'GET' => ['good_id' => 't-edit']]);
                 if ($noAuth->isSuccess()) {
                     throw new RuntimeException('AppEdit: unauthorized access should fail.');
                 }
                 Auth::setMockSession(['user' => ['id' => 'seller_123', 'name' => 'Test User']]);
 
-                // Тест: отсутствие app_id
+                // Тест: отсутствие good_id
                 $noId = $this->domain($testDb, ['METHOD' => 'GET', 'GET' => []]);
                 if ($noId->isSuccess()) {
-                    throw new RuntimeException('AppEdit: missing app_id should fail.');
+                    throw new RuntimeException('AppEdit: missing good_id should fail.');
                 }
 
                 // Тест: несуществующее приложение
-                $notFound = $this->domain($testDb, ['METHOD' => 'GET', 'GET' => ['app_id' => 'nonexistent']]);
+                $notFound = $this->domain($testDb, ['METHOD' => 'GET', 'GET' => ['good_id' => 'nonexistent']]);
                 if ($notFound->isSuccess()) {
-                    throw new RuntimeException('AppEdit: nonexistent app should fail.');
+                    throw new RuntimeException('AppEdit: nonexistent good should fail.');
                 }
 
                 // Тест: GET запрос должен вернуть форму
-                $ok = $this->domain($testDb, ['METHOD' => 'GET', 'GET' => ['app_id' => 't-edit']]);
+                $ok = $this->domain($testDb, ['METHOD' => 'GET', 'GET' => ['good_id' => 't-edit']]);
                 if ($ok->isFailure()) {
                     throw new RuntimeException('AppEdit: valid request failed: ' . $ok->getError());
                 }
                 $data = $ok->getData();
-                if (!isset($data['app']) || !isset($data['show_form'])) {
-                    throw new RuntimeException('AppEdit: should return app and show_form.');
+                if (!isset($data['good']) || !isset($data['show_form'])) {
+                    throw new RuntimeException('AppEdit: should return good and show_form.');
                 }
 
                 // Тест: POST с валидными данными
                 $postOk = $this->domain($testDb, [
                     'METHOD' => 'POST',
-                    'GET' => ['app_id' => 't-edit'],
-                    'POST' => ['app_id' => 't-edit', 'title' => 'Updated Title', 'csrf_token' => 'test'],
+                    'GET' => ['good_id' => 't-edit'],
+                    'POST' => ['good_id' => 't-edit', 'title' => 'Updated Title', 'csrf_token' => 'test'],
                 ]);
                 if ($postOk->isFailure()) {
                     throw new RuntimeException('AppEdit: valid POST failed: ' . $postOk->getError());
@@ -1059,17 +1059,17 @@ $features = [
                 // Тест: POST с коротким названием
                 $shortTitle = $this->domain($testDb, [
                     'METHOD' => 'POST',
-                    'GET' => ['app_id' => 't-edit'],
-                    'POST' => ['app_id' => 't-edit', 'title' => 'AB', 'csrf_token' => 'test'],
+                    'GET' => ['good_id' => 't-edit'],
+                    'POST' => ['good_id' => 't-edit', 'title' => 'AB', 'csrf_token' => 'test'],
                 ]);
                 if ($shortTitle->isSuccess()) {
                     throw new RuntimeException('AppEdit: short title should fail.');
                 }
 
                 // Тест: HTML response
-                $html = $this->response($ok, ['METHOD' => 'GET', 'GET' => ['app_id' => 't-edit']]);
+                $html = $this->response($ok, ['METHOD' => 'GET', 'GET' => ['good_id' => 't-edit']]);
                 if (strpos($html, 'Original Title') === false) {
-                    throw new RuntimeException('AppEdit: HTML response missing app title.');
+                    throw new RuntimeException('AppEdit: HTML response missing good title.');
                 }
 
                 echo "[PASS] good_edit\n";
@@ -1213,9 +1213,9 @@ $features = [
 
             // Фильтрация товаров по названию (case-insensitive поиск)
             $matchingGoods = [];
-            foreach ($db->goods as $app) {
-                if (mb_stripos($app['title'], $query) !== false) {
-                    $matchingGoods[] = $app;
+            foreach ($db->goods as $good) {
+                if (mb_stripos($good['title'], $query) !== false) {
+                    $matchingGoods[] = $good;
                 }
             }
 
@@ -1491,9 +1491,9 @@ $features = [
             
             // Фильтруем товара, входящие в коллекцию
             $goods = [];
-            foreach ($db->goods as $app) {
-                if (in_array($app['id'], $collectionGoodIds, true)) {
-                    $goods[] = $app;
+            foreach ($db->goods as $good) {
+                if (in_array($good['id'], $collectionGoodIds, true)) {
+                    $goods[] = $good;
                 }
             }
 
@@ -1586,7 +1586,7 @@ $features = [
             if (($request['METHOD'] ?? 'GET') === 'POST') {
                 $name = trim((string)($request['POST']['name'] ?? ''));
                 $description = trim((string)($request['POST']['description'] ?? ''));
-                $appIds = (array)($request['POST']['app_ids'] ?? []);
+                $goodIds = (array)($request['POST']['good_ids'] ?? []);
 
                 if ($name === '') {
                     return DomainResult::failure('Название коллекции не может быть пустым.');
@@ -1597,7 +1597,7 @@ $features = [
                 $db->collections[$collectionId]['description'] = $description;
                 
                 // Обновляем связь многие-ко-многим
-                $db->collectionGoodIds[$collectionId] = $appIds;
+                $db->collectionGoodIds[$collectionId] = $goodIds;
 
                 return DomainResult::success(['status' => 'updated', 'collection' => $db->collections[$collectionId]]);
             }
@@ -1680,7 +1680,7 @@ $features = [
                         'csrf_token' => Csrf::token(),
                         'name' => 'Обновлённая коллекция',
                         'description' => 'Новое описание',
-                        'app_ids' => ['t-1', 't-2'],
+                        'good_ids' => ['t-1', 't-2'],
                     ],
                 ]);
                 if ($postRes->isFailure()) {
@@ -1694,7 +1694,7 @@ $features = [
                     throw new RuntimeException('Collection edit POST did not update name.');
                 }
                 if ($testDb->collectionGoodIds['col-1'] !== ['t-1', 't-2']) {
-                    throw new RuntimeException('Collection edit POST did not update app associations.');
+                    throw new RuntimeException('Collection edit POST did not update good associations.');
                 }
 
                 // Тест: HTML ответ с формой
@@ -1735,9 +1735,9 @@ $features = [
 
             // Фильтруем товара по category_id
             $goods = [];
-            foreach ($db->goods as $app) {
-                if (($app['category_id'] ?? '') === $category['id']) {
-                    $goods[$app['id']] = $app;
+            foreach ($db->goods as $good) {
+                if (($good['category_id'] ?? '') === $category['id']) {
+                    $goods[$good['id']] = $good;
                 }
             }
 
