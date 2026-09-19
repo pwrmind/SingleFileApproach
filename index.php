@@ -411,7 +411,7 @@ $features = [
             if ($result->isSuccess()) {
                 $status = $result->getData()['status'] ?? '';
                 if ($status === 'logged_in' || $status === 'already_logged_in') {
-                    return $this->redirect('?action=publish');
+                    return $this->redirect('?action=add_good');
                 }
             }
 
@@ -447,7 +447,7 @@ $features = [
 
                 // response() с успехом должен вернуть маркер редиректа, а не exit
                 $out = $this->response($ok, ['METHOD' => 'POST']);
-                if (strpos($out, BaseAdrSlice::TEST_REDIRECT_PREFIX . '?action=publish') === false) {
+                if (strpos($out, BaseAdrSlice::TEST_REDIRECT_PREFIX . '?action=add_good') === false) {
                     throw new RuntimeException('Login: success did not redirect to publish.');
                 }
             } finally {
@@ -458,7 +458,7 @@ $features = [
     },
 
     // --- PUBLISH: HTML + JSON ----------------------------------------------
-    'publish' => new class extends BaseAdrSlice {
+    'add_good' => new class extends BaseAdrSlice {
         public function domain(Db $db, array $request): DomainResult
         {
             if (!Auth::check()) {
