@@ -478,6 +478,7 @@ $features = [
                 'id'          => $newId,
                 'seller_id'      => Auth::user()['id'],
                 'title'       => $title,
+                'description' => $request['POST']['description'] ?? null,
                 'price' => $request['POST']['price'] ?? null,
                 'sales'   => 0,
                 'stock' => $request['POST']['stock'] ?? null,
