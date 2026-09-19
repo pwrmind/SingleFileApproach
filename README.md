@@ -251,13 +251,13 @@ Layout::render('Каталог', $content);
             // Нельзя удалить чужое
             $res = $this->domain($testDb, ['METHOD' => 'POST', 'POST' => ['good_id' => 'foe']]);
             if ($res->isSuccess() || isset($testDb->goods['foe']) === false) {
-                throw new RuntimeException('DeleteApp: allowed to delete other developer\'s app.');
+                throw new RuntimeException('DeleteApp: allowed to delete other developer\'s good.');
             }
 
             // Можно удалить своё
             $res = $this->domain($testDb, ['METHOD' => 'POST', 'POST' => ['good_id' => 'own']]);
             if ($res->isFailure() || isset($testDb->goods['own'])) {
-                throw new RuntimeException('DeleteApp: could not delete own app.');
+                throw new RuntimeException('DeleteApp: could not delete own good.');
             }
         } finally {
             Auth::setMockSession(null);
@@ -347,12 +347,12 @@ Exit code: `0` при успехе, `1` при любом провале.
 ```bash
 # Каталог
 curl "http://localhost:8000/?action=catalog&format=json"
-# {"goods":[{"id":"app-1","dev_id":"dev_123","title":"Telegram Dev","downloads":150}]}
+# {"goods":[{"id":"good-1","dev_id":"dev_123","title":"Telegram Dev","downloads":150}]}
 
 # Публикация (нужна сессия и CSRF)
 curl -X POST "http://localhost:8000/?action=publish&format=json" \
      -d "good_title=My App" -d "csrf_token=<token>"
-# {"status":"created","id":"app-2"}
+# {"status":"created","id":"good-2"}
 
 # Ошибка — 403
 curl "http://localhost:8000/?action=publish&format=json"

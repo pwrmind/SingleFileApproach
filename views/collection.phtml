@@ -16,7 +16,7 @@
 <?php if (empty($goods)): ?>
     <p>В этой коллекции пока нет товаров.</p>
 <?php else: ?>
-    <ul class="app-list">
+    <ul class="good-list">
         <?php foreach ($goods as $good): ?>
             <li class="card">
                 <h3><a href="?action=good_details&good_id=<?= htmlspecialchars($good['id'] ?? '', ENT_QUOTES) ?>"><?= htmlspecialchars($good['title'] ?? '', ENT_QUOTES) ?></a></h3>
